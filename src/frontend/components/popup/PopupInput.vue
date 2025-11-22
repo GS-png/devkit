@@ -521,7 +521,6 @@ function fixIMEPosition() {
     try {
       // 获取实际的 textarea 元素（Naive UI 的 n-input）
       const inputElement = (textareaRef.value as any).$el?.querySelector('textarea') || (textareaRef.value as any).inputElRef
-      
       if (inputElement && document.activeElement === inputElement) {
         // 先失焦再聚焦，让输入法重新计算位置
         inputElement.blur()
@@ -540,13 +539,11 @@ function fixIMEPosition() {
 async function setupWindowMoveListener() {
   try {
     const webview = getCurrentWebviewWindow()
-    
     // 监听窗口移动事件
     unlistenWindowMove = await webview.onMoved(() => {
       // 窗口移动后修复输入法位置
       fixIMEPosition()
     })
-    
     console.log('窗口移动监听器已设置')
   }
   catch (error) {
@@ -564,7 +561,6 @@ onMounted(async () => {
     console.log('收到自定义prompt更新事件，重新加载数据')
     loadCustomPrompts()
   })
-  
   // 设置窗口移动监听器
   setupWindowMoveListener()
 })
@@ -574,7 +570,6 @@ onUnmounted(() => {
   if (unlistenCustomPromptUpdate) {
     unlistenCustomPromptUpdate()
   }
-  
   // 清理窗口移动监听器
   if (unlistenWindowMove) {
     unlistenWindowMove()
