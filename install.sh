@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# 寸止 MCP 工具 - 最简化安装脚本
+# 三术 MCP 工具 - 最简化安装脚本
 # 只需构建两个CLI工具即可运行MCP
 
 set -e
 
-echo "🚀 安装 寸止 MCP 工具..."
+echo "🚀 安装 三术 MCP 工具..."
 
 # 检查必要工具
 for cmd in cargo pnpm; do
@@ -23,7 +23,7 @@ echo "🔨 构建 CLI 工具..."
 cargo build --release
 
 # 检查构建结果
-if [[ ! -f "target/release/等一下" ]] || [[ ! -f "target/release/寸止" ]]; then
+if [[ ! -f "target/release/等一下" ]] || [[ ! -f "target/release/三术" ]]; then
     echo "❌ 构建失败"
     exit 1
 fi
@@ -33,8 +33,8 @@ BIN_DIR="$HOME/.local/bin"
 mkdir -p "$BIN_DIR"
 
 cp "target/release/等一下" "$BIN_DIR/"
-cp "target/release/寸止" "$BIN_DIR/"
-chmod +x "$BIN_DIR/等一下" "$BIN_DIR/寸止"
+cp "target/release/三术" "$BIN_DIR/"
+chmod +x "$BIN_DIR/等一下" "$BIN_DIR/三术"
 
 echo "✅ 安装完成！CLI 工具已安装到 $BIN_DIR"
 
@@ -48,8 +48,8 @@ fi
 
 echo ""
 echo "📋 使用方法："
-echo "  寸止        - 启动 MCP 服务器"
+echo "  三术        - 启动 MCP 服务器"
 echo "  等一下      - 启动弹窗界面"
 echo ""
 echo "📝 MCP 客户端配置："
-echo '{"mcpServers": {"寸止": {"command": "寸止"}}}'
+echo '{"mcpServers": {"三术": {"command": "三术"}}}'

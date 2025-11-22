@@ -100,12 +100,12 @@ function testPopup() {
           <div class="flex items-center justify-center gap-3 mb-3" data-guide="app-logo">
             <img
               src="/icons/icon-128.png"
-              alt="寸止 Logo"
+              alt="三术 Logo"
               class="w-10 h-10 rounded-xl shadow-lg"
               @error="handleImageError"
             >
             <h1 class="text-4xl font-medium text-white">
-              寸止
+              三术
             </h1>
             <!-- 测试按钮 -->
             <n-button
@@ -135,7 +135,7 @@ function testPopup() {
 
           <!-- 副标题 -->
           <p class="text-base opacity-50 font-normal text-white">
-            告别AI提前终止烦恼，助力AI更加持久
+            道生一，一生二，二生三，三生万物
           </p>
         </div>
 

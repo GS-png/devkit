@@ -5,10 +5,10 @@ import { listen } from '@tauri-apps/api/event'
 import { useMessage } from 'naive-ui'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 
+import { useAcemcpSync } from '../../composables/useAcemcpSync'
 import PopupActions from './PopupActions.vue'
 import PopupContent from './PopupContent.vue'
 import PopupInput from './PopupInput.vue'
-import { useAcemcpSync } from '../../composables/useAcemcpSync'
 
 interface AppConfig {
   theme: string
@@ -135,7 +135,8 @@ watch(() => props.request, (newRequest) => {
     if (newRequest.project_root_path) {
       setCurrentProject(newRequest.project_root_path)
       startPolling(newRequest.project_root_path, 3000) // 3秒轮询间隔
-    } else {
+    }
+    else {
       // 没有项目路径时停止轮询
       stopPolling()
     }
@@ -364,7 +365,7 @@ async function handleEnhance() {
 
   try {
     // 构建增强prompt
-    const enhancePrompt = `Use the following prompt to optimize and enhance the context of the content in 《》, and return the enhanced result by calling the tool '寸止' after completion.Here is an instruction that I'd like to give you, but it needs to be improved. Rewrite and enhance this instruction to make it clearer, more specific, less ambiguous, and correct any mistakes. Reply immediately with your answer, even if you're not sure. Consider the context of our conversation history when enhancing the prompt. Reply with the following format:
+    const enhancePrompt = `Use the following prompt to optimize and enhance the context of the content in 《》, and return the enhanced result by calling the tool '三术' after completion.Here is an instruction that I'd like to give you, but it needs to be improved. Rewrite and enhance this instruction to make it clearer, more specific, less ambiguous, and correct any mistakes. Reply immediately with your answer, even if you're not sure. Consider the context of our conversation history when enhancing the prompt. Reply with the following format:
 
 ### BEGIN RESPONSE ###
 Here is an enhanced version of the original instruction that is more specific and clear:

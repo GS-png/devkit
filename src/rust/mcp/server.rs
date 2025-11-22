@@ -86,7 +86,7 @@ impl ServerHandler for ZhiServer {
 
         let mut tools = Vec::new();
 
-        // 寸止工具始终可用（必需工具）
+        // 三术工具始终可用（必需工具）
         let zhi_schema = serde_json::json!({
             "type": "object",
             "properties": {
@@ -181,7 +181,7 @@ impl ServerHandler for ZhiServer {
                 let zhi_request: ZhiRequest = serde_json::from_value(arguments_value)
                     .map_err(|e| McpError::invalid_params(format!("参数解析失败: {}", e), None))?;
 
-                // 调用寸止工具
+                // 调用三术工具
                 InteractionTool::zhi(zhi_request).await
             }
             "ji" => {
