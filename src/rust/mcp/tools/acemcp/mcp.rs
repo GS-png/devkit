@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rmcp::{model::*, Error as McpError};
+use rmcp::{model::*, ErrorData as McpError};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -102,7 +102,9 @@ impl AcemcpTool {
             Err(e) => {
                 return Ok(CallToolResult {
                     content: vec![Content::text(format!("Acemcp搜索失败: {}", e))],
-                    is_error: Some(true)
+                    is_error: Some(true),
+                    meta: None,
+                    structured_content: None,
                 });
             }
         };
@@ -114,7 +116,12 @@ impl AcemcpTool {
             format!("{}{}", search_result, hint_message)
         };
 
-        Ok(CallToolResult { content: vec![Content::text(final_result)], is_error: None })
+        Ok(CallToolResult { 
+            content: vec![Content::text(final_result)], 
+            is_error: None,
+            meta: None,
+            structured_content: None,
+        })
     }
 
     /// 执行索引更新（向后兼容的索引+搜索一体化接口）
@@ -140,11 +147,26 @@ impl AcemcpTool {
             Ok(_blob_names) => {
                 // 索引成功后执行搜索
                 match search_only(&acemcp_config, &request.project_root_path, &request.query).await {
-                    Ok(text) => Ok(CallToolResult { content: vec![Content::text(text)], is_error: None }),
-                    Err(e) => Ok(CallToolResult { content: vec![Content::text(format!("搜索失败: {}", e))], is_error: Some(true) })
+                    Ok(text) => Ok(CallToolResult { 
+                        content: vec![Content::text(text)], 
+                        is_error: None,
+                        meta: None,
+                        structured_content: None,
+                    }),
+                    Err(e) => Ok(CallToolResult { 
+                        content: vec![Content::text(format!("搜索失败: {}", e))], 
+                        is_error: Some(true),
+                        meta: None,
+                        structured_content: None,
+                    })
                 }
             }
-            Err(e) => Ok(CallToolResult { content: vec![Content::text(format!("索引更新失败: {}", e))], is_error: Some(true) })
+            Err(e) => Ok(CallToolResult { 
+                content: vec![Content::text(format!("索引更新失败: {}", e))], 
+                is_error: Some(true),
+                meta: None,
+                structured_content: None,
+            })
         }
     }
 
@@ -260,6 +282,10 @@ impl AcemcpTool {
                 description: Some(Cow::Borrowed("基于查询在特定项目中搜索相关的代码上下文。依赖后台增量索引与文件监听机制维护索引，并在索引进行中通过智能等待在实时性和响应速度之间做平衡。返回代码库中与查询语义相关的格式化文本片段。")),
                 input_schema: Arc::new(schema_map),
                 annotations: None,
+                icons: None,
+                meta: None,
+                output_schema: None,
+                structured_content: None,
             }
         } else {
             panic!("Schema creation failed");
