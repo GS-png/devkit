@@ -1,5 +1,5 @@
-use sansu::app::{handle_cli_args, run_tauri_app};
-use sansu::utils::auto_init_logger;
+use sanshu::app::{handle_cli_args, run_tauri_app};
+use sanshu::utils::auto_init_logger;
 use anyhow::Result;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

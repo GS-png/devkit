@@ -91,13 +91,13 @@ select_build_type() {
 check_global_cli() {
     echo -e "${YELLOW}🔍 检查全局CLI工具...${NC}"
 
-    local sansu_found=false
+    local sanshu_found=false
     local dengxiaxia_found=false
 
     # 检查三术
     if command -v 三术 &> /dev/null; then
         echo -e "${GREEN}✅ 找到全局 三术 CLI: $(which 三术)${NC}"
-        sansu_found=true
+        sanshu_found=true
     else
         echo -e "${RED}❌ 未找到全局 三术 CLI${NC}"
     fi
@@ -110,7 +110,7 @@ check_global_cli() {
         echo -e "${RED}❌ 未找到全局 等一下 CLI${NC}"
     fi
 
-    if [[ "$sansu_found" == false || "$dengxiaxia_found" == false ]]; then
+    if [[ "$sanshu_found" == false || "$dengxiaxia_found" == false ]]; then
         echo -e "${YELLOW}💡 全局CLI工具未完全安装，安装方法:${NC}"
         echo -e "${BLUE}   cargo install --path . --bins${NC}"
         echo -e "${YELLOW}   或者选择使用本地编译版本${NC}"
@@ -415,16 +415,16 @@ show_cli_help() {
     echo -e "${YELLOW}📖 CLI工具帮助信息:${NC}"
     echo ""
 
-    local sansu_cmd=$(get_cli_command "三术")
+    local sanshu_cmd=$(get_cli_command "三术")
     local dengxiaxia_cmd=$(get_cli_command "等一下")
 
     echo -e "${BLUE}三术 CLI:${NC}"
-    echo -e "${BLUE}命令: $sansu_cmd${NC}"
-    if $sansu_cmd --help 2>/dev/null; then
+    echo -e "${BLUE}命令: $sanshu_cmd${NC}"
+    if $sanshu_cmd --help 2>/dev/null; then
         echo -e "${GREEN}✅ 帮助信息显示完成${NC}"
     else
         echo -e "${YELLOW}⚠️  三术 CLI 无帮助信息或不支持 --help 参数${NC}"
-        echo -e "${BLUE}尝试直接运行:${NC} $sansu_cmd"
+        echo -e "${BLUE}尝试直接运行:${NC} $sanshu_cmd"
     fi
     echo ""
 

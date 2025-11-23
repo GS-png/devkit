@@ -55,7 +55,7 @@ test_client.py
 .env.production.local
 
 # Memory files (user-specific)
-.sansu-memory/
+.sanshu-memory/
 
 # Configuration files (user-specific)
 config.json

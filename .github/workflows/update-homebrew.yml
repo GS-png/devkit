@@ -44,9 +44,9 @@ jobs:
           VERSION_NUMBER="${{ steps.release_info.outputs.version_number }}"
 
           # 检查 release assets 是否存在
-          # URL 格式：/download/{TAG_NAME}/sansu-cli-{TAG_NAME}-{platform}.tar.gz
-          INTEL_URL="https://github.com/imhuso/sansu/releases/download/${TAG_NAME}/sansu-cli-${TAG_NAME}-macos-x86_64.tar.gz"
-          ARM_URL="https://github.com/imhuso/sansu/releases/download/${TAG_NAME}/sansu-cli-${TAG_NAME}-macos-aarch64.tar.gz"
+          # URL 格式：/download/{TAG_NAME}/sanshu-cli-{TAG_NAME}-{platform}.tar.gz
+          INTEL_URL="https://github.com/imhuso/sanshu/releases/download/${TAG_NAME}/sanshu-cli-${TAG_NAME}-macos-x86_64.tar.gz"
+          ARM_URL="https://github.com/imhuso/sanshu/releases/download/${TAG_NAME}/sanshu-cli-${TAG_NAME}-macos-aarch64.tar.gz"
 
           echo "Checking Intel asset: $INTEL_URL"
           if ! curl --head --fail "$INTEL_URL" > /dev/null 2>&1; then
@@ -68,8 +68,8 @@ jobs:
           TAG_NAME="${{ steps.release_info.outputs.tag_name }}"
           VERSION_NUMBER="${{ steps.release_info.outputs.version_number }}"
 
-          INTEL_URL="https://github.com/imhuso/sansu/releases/download/${TAG_NAME}/sansu-cli-${TAG_NAME}-macos-x86_64.tar.gz"
-          ARM_URL="https://github.com/imhuso/sansu/releases/download/${TAG_NAME}/sansu-cli-${TAG_NAME}-macos-aarch64.tar.gz"
+          INTEL_URL="https://github.com/imhuso/sanshu/releases/download/${TAG_NAME}/sanshu-cli-${TAG_NAME}-macos-x86_64.tar.gz"
+          ARM_URL="https://github.com/imhuso/sanshu/releases/download/${TAG_NAME}/sanshu-cli-${TAG_NAME}-macos-aarch64.tar.gz"
 
           echo "Downloading and calculating SHA256..."
 
@@ -88,10 +88,10 @@ jobs:
           echo "Intel SHA256: $INTEL_SHA256"
           echo "ARM SHA256: $ARM_SHA256"
 
-      - name: 检出 homebrew-sansu 仓库
+      - name: 检出 homebrew-sanshu 仓库
         uses: actions/checkout@v4
         with:
-          repository: imhuso/homebrew-sansu
+          repository: imhuso/homebrew-sanshu
           token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
           path: homebrew-tap
 
@@ -113,8 +113,8 @@ jobs:
           cd homebrew-tap
 
           # 确保 Formula 文件存在
-          if [[ ! -f "Formula/sansu.rb" ]]; then
-            echo "❌ Error: Formula/sansu.rb not found in tap repository"
+          if [[ ! -f "Formula/sanshu.rb" ]]; then
+            echo "❌ Error: Formula/sanshu.rb not found in tap repository"
             exit 1
           fi
 
@@ -126,40 +126,40 @@ jobs:
           echo "  ARM SHA256: ${ARM_SHA256}"
 
           # 更新版本号
-          sed -i "s|version \".*\"|version \"${VERSION_NUMBER}\"|g" Formula/sansu.rb
+          sed -i "s|version \".*\"|version \"${VERSION_NUMBER}\"|g" Formula/sanshu.rb
 
           # 更新 Intel 版本的 URL 和 SHA256（适配新的 on_intel 语法）
-          sed -i "s|https://github.com/imhuso/sansu/releases/download/v[0-9.]*/sansu-cli-v[0-9.]*-macos-x86_64.tar.gz|${INTEL_URL}|g" Formula/sansu.rb
-          sed -i "/on_intel do/,/end/ { /sha256/ s|sha256[[:space:]]*\".*\"|sha256  \"${INTEL_SHA256}\"|; }" Formula/sansu.rb
+          sed -i "s|https://github.com/imhuso/sanshu/releases/download/v[0-9.]*/sanshu-cli-v[0-9.]*-macos-x86_64.tar.gz|${INTEL_URL}|g" Formula/sanshu.rb
+          sed -i "/on_intel do/,/end/ { /sha256/ s|sha256[[:space:]]*\".*\"|sha256  \"${INTEL_SHA256}\"|; }" Formula/sanshu.rb
 
           # 更新 ARM 版本的 URL 和 SHA256（适配新的 on_arm 语法）
-          sed -i "s|https://github.com/imhuso/sansu/releases/download/v[0-9.]*/sansu-cli-v[0-9.]*-macos-aarch64.tar.gz|${ARM_URL}|g" Formula/sansu.rb
-          sed -i "/on_arm do/,/end/ { /sha256/ s|sha256[[:space:]]*\".*\"|sha256  \"${ARM_SHA256}\"|; }" Formula/sansu.rb
+          sed -i "s|https://github.com/imhuso/sanshu/releases/download/v[0-9.]*/sanshu-cli-v[0-9.]*-macos-aarch64.tar.gz|${ARM_URL}|g" Formula/sanshu.rb
+          sed -i "/on_arm do/,/end/ { /sha256/ s|sha256[[:space:]]*\".*\"|sha256  \"${ARM_SHA256}\"|; }" Formula/sanshu.rb
 
       - name: 验证配方更改
         run: |
           cd homebrew-tap
 
           echo "=== Formula changes ==="
-          git diff Formula/sansu.rb || true
+          git diff Formula/sanshu.rb || true
 
           echo "=== Updated Formula content ==="
-          cat Formula/sansu.rb
+          cat Formula/sanshu.rb
 
-      - name: 提交并推送到 homebrew-sansu 仓库
+      - name: 提交并推送到 homebrew-sanshu 仓库
         run: |
           TAG_NAME="${{ steps.release_info.outputs.tag_name }}"
           VERSION_NUMBER="${{ steps.release_info.outputs.version_number }}"
           cd homebrew-tap
 
           # 检查是否有更改
-          if git diff --quiet Formula/sansu.rb; then
+          if git diff --quiet Formula/sanshu.rb; then
             echo "No changes to Formula, skipping commit"
             exit 0
           fi
 
           # 提交并推送更改
-          git add Formula/sansu.rb
+          git add Formula/sanshu.rb
           git commit -m "chore: update formula to ${TAG_NAME}
 
           - Update version to ${VERSION_NUMBER}
@@ -167,11 +167,11 @@ jobs:
           - Auto-generated by update-homebrew workflow"
 
           git push origin main
-          echo "✅ Successfully updated homebrew-sansu repository"
+          echo "✅ Successfully updated homebrew-sanshu repository"
 
       - name: 测试配方 (可选)
         run: |
           echo "🧪 Formula update completed successfully!"
           echo "You can test the formula with:"
-          echo "  brew tap imhuso/sansu"
-          echo "  brew install sansu"
+          echo "  brew tap imhuso/sanshu"
+          echo "  brew install sanshu"

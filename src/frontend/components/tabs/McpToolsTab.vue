@@ -665,7 +665,7 @@ watch(() => acemcpConfig.value.text_extensions, (list) => {
                 <template #icon>
                   <div class="i-carbon-document-text" />
                 </template>
-                代码搜索工具会自动记录操作日志，包括索引过程、搜索请求和错误信息。日志文件位于 ~/.sansu/log/acemcp.log
+                代码搜索工具会自动记录操作日志，包括索引过程、搜索请求和错误信息。日志文件位于 ~/.sanshu/log/acemcp.log
               </n-alert>
 
               <!-- 统一的日志和调试区域 -->

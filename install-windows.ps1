@@ -71,7 +71,7 @@ Write-Host "📁 创建安装目录: $InstallDir" -ForegroundColor Yellow
 New-Item -ItemType Directory -Path $BinDir -Force | Out-Null
 
 # 复制二进制文件
-$MainExe = "$BinDir\sansu.exe"
+$MainExe = "$BinDir\sanshu.exe"
 $UiExe = "$BinDir\等一下.exe"
 $McpExe = "$BinDir\三术.exe"
 

@@ -233,21 +233,21 @@ jobs:
             cp "$TARGET_DIR/等一下.exe" cli-package/
             cp "$TARGET_DIR/三术.exe" cli-package/
             cd cli-package
-            7z a ../sansu-cli-${TAG_NAME}-${{ matrix.name }}.zip *
+            7z a ../sanshu-cli-${TAG_NAME}-${{ matrix.name }}.zip *
           else
             cp "$TARGET_DIR/等一下" cli-package/
             cp "$TARGET_DIR/三术" cli-package/
             cd cli-package
-            tar -czf ../sansu-cli-${TAG_NAME}-${{ matrix.name }}.tar.gz *
+            tar -czf ../sanshu-cli-${TAG_NAME}-${{ matrix.name }}.tar.gz *
           fi
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: sansu-cli-${{ matrix.name }}
+          name: sanshu-cli-${{ matrix.name }}
           path: |
-            sansu-cli-*.tar.gz
-            sansu-cli-*.zip
+            sanshu-cli-*.tar.gz
+            sanshu-cli-*.zip
           if-no-files-found: error
 
   # -----------------------------------------------------------------------------
@@ -312,8 +312,8 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            artifacts/*/sansu-cli-*.tar.gz
-            artifacts/*/sansu-cli-*.zip
+            artifacts/*/sanshu-cli-*.tar.gz
+            artifacts/*/sanshu-cli-*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

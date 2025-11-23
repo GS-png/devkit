@@ -1,17 +1,17 @@
 {
-  "name": "sansu",
+  "name": "sanshu",
   "type": "module",
   "version": "0.0.3",
   "packageManager": "pnpm@10.12.1",
   "author": "煎饼果子(86)",
   "license": "MIT",
-  "homepage": "https://github.com/yuaotian/sansu",
+  "homepage": "https://github.com/yuaotian/sanshu",
   "repository": {
     "type": "git",
-    "url": "https://github.com/yuaotian/sansu.git"
+    "url": "https://github.com/yuaotian/sanshu.git"
   },
   "bugs": {
-    "url": "https://github.com/yuaotian/sansu/issues"
+    "url": "https://github.com/yuaotian/sanshu/issues"
   },
   "scripts": {
     "dev": "vite",

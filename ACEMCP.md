@@ -116,7 +116,7 @@
 
 - **配置**：存储在三术的配置文件中
 - **索引数据**：`~/.acemcp/data/projects.json`（项目索引信息）
-- **日志文件**：`~/.sansu/log/acemcp.log`（工具运行日志）
+- **日志文件**：`~/.sanshu/log/acemcp.log`（工具运行日志）
 
 ### 索引状态与智能等待（与三术 MCP 集成时）
 
@@ -180,4 +180,4 @@ acemcp 项目基于 ACE (Augment Context Engine) 构建，提供了强大的代�
 ## 📚 相关链接
 
 - [acemcp 原始项目](https://github.com/qy527145/acemcp)
-- [三术项目主页](https://github.com/yuaotian/sansu)
+- [三术项目主页](https://github.com/yuaotian/sanshu)

@@ -6,8 +6,8 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/yuaotian/sansu.git
-cd sansu
+git clone https://github.com/yuaotian/sanshu.git
+cd sanshu
 
 # 运行安装脚本
 chmod +x install.sh
@@ -16,11 +16,11 @@ chmod +x install.sh
 
 ### 方式二：下载预编译版本
 
-从 [Releases](https://github.com/yuaotian/sansu/releases) 页面下载对应平台的预编译版本：
+从 [Releases](https://github.com/yuaotian/sanshu/releases) 页面下载对应平台的预编译版本：
 
-- **Linux**: `sansu-linux-x86_64.tar.gz`
-- **macOS**: `sansu-macos-universal.tar.gz`
-- **Windows**: `sansu-windows-x86_64.zip`
+- **Linux**: `sanshu-linux-x86_64.tar.gz`
+- **macOS**: `sanshu-macos-universal.tar.gz`
+- **Windows**: `sanshu-windows-x86_64.zip`
 
 #### 安装步骤：
 
@@ -30,14 +30,14 @@ chmod +x install.sh
 
 ```bash
 # Linux/macOS 示例
-tar -xzf sansu-linux-x86_64.tar.gz
+tar -xzf sanshu-linux-x86_64.tar.gz
 sudo cp 等一下 三术 /usr/local/bin/
 ```
 
 ```powershell
 # Windows 示例
-# 解压 zip 文件到 C:\sansu
-# 将 C:\sansu 添加到系统 PATH
+# 解压 zip 文件到 C:\sanshu
+# 将 C:\sanshu 添加到系统 PATH
 ```
 
 ## 验证安装

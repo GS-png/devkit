@@ -1,8 +1,8 @@
-# 三术 / sansu
+# 三术 / sanshu
 
 > **道生一，一生二，二生三，三生万物**
 
-三术 (Sansu) 是一个集成了 **智 (zhi)**、**记 (ji)**、**搜 (sou)** 三大核心能力的 AI 辅助编程增强系统。它通过 MCP (Model Context Protocol) 协议与 AI 助手深度协同，实现了从被动应答到主动协作的范式转变。
+三术 (sanshu) 是一个集成了 **智 (zhi)**、**记 (ji)**、**搜 (sou)** 三大核心能力的 AI 辅助编程增强系统。它通过 MCP (Model Context Protocol) 协议与 AI 助手深度协同，实现了从被动应答到主动协作的范式转变。
 
 ## 🌟 核心功能
 
@@ -148,8 +148,8 @@
 
 1. **克隆仓库**
    ```bash
-   git clone https://github.com/yuaotian/sansu.git
-   cd sansu
+   git clone https://github.com/yuaotian/sanshu.git
+   cd sanshu
    ```
 
 2. **编译**
@@ -206,4 +206,4 @@
 
 ## 🙏 致谢
 
-特此感谢 [寸止 (Cunzhi)](https://github.com/imhuso/cunzhi) 项目为本项目提供了坚实的基础。三术 (Sansu) 是在原项目基础上的进一步探索与创新，我们向原作者致以诚挚的谢意。
+特此感谢 [寸止 (Cunzhi)](https://github.com/imhuso/cunzhi) 项目为本项目提供了坚实的基础。三术 (sanshu) 是在原项目基础上的进一步探索与创新，我们向原作者致以诚挚的谢意。
