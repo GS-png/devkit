@@ -109,7 +109,7 @@ pnpm install
 # 3. 构建项目
 pnpm build
 cargo build --release
-
+0
 # 4. 安装 CLI 工具
 # Linux/macOS
 ./install.sh
