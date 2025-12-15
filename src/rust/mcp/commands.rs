@@ -45,7 +45,7 @@ pub async fn get_mcp_tools_config(state: State<'_, AppState>) -> Result<Vec<MCPT
         id: mcp::TOOL_JI.to_string(),
         name: "记忆管理".to_string(),
         description: "全局记忆管理工具，用于存储和管理重要的开发规范、用户偏好和最佳实践".to_string(),
-        enabled: config.mcp_config.tools.get(mcp::TOOL_JI).copied().unwrap_or(false),
+        enabled: config.mcp_config.tools.get(mcp::TOOL_JI).copied().unwrap_or(true), // 修复：默认启用，与 default_mcp_tools() 保持一致
         can_disable: true,
         icon: "i-carbon-data-base text-lg text-purple-600 dark:text-purple-400".to_string(),
         icon_bg: "bg-green-100 dark:bg-green-900".to_string(),

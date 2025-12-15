@@ -60,8 +60,8 @@ impl Default for McpConfig {
     fn default() -> Self {
         Self {
             tools: vec![
-                McpToolConfig::new(TOOL_ZHI, true, false), // 三术工具不可禁用
-                McpToolConfig::new(TOOL_JI, false, true),   // 记忆管理工具可禁用，默认关闭
+                McpToolConfig::new(TOOL_ZHI, true, false), // 三术工具不可禁用，默认启用
+                McpToolConfig::new(TOOL_JI, true, true),   // 记忆管理工具可禁用，默认启用（与 default_mcp_tools() 保持一致）
                 McpToolConfig::new(TOOL_SOU, false, true), // 代码搜索工具可禁用，默认关闭
             ],
             continue_reply_enabled: DEFAULT_CONTINUE_REPLY_ENABLED,
