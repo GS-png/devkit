@@ -7,7 +7,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 use std::time::Duration;
 
-use super::types::{Context7Request, Context7Config, Context7Response};
+use super::types::{Context7Request, Context7Config, Context7Response, SearchResponse, SearchResult};
 use crate::log_debug;
 use crate::log_important;
 
@@ -147,6 +147,13 @@ impl Context7Tool {
         // 处理错误状态码
         if !status.is_success() {
             let error_text = response.text().await.unwrap_or_else(|_| "无法读取错误信息".to_string());
+
+            // 404 错误时触发智能降级：搜索候选库
+            if status.as_u16() == 404 {
+                log_important!(info, "库 '{}' 不存在，触发智能搜索", request.library);
+                return Self::handle_not_found_with_search(config, request).await;
+            }
+
             return Err(anyhow::anyhow!(
                 "API 请求失败 (状态码: {}): {}",
                 status,
@@ -221,5 +228,152 @@ impl Context7Tool {
         output.push_str(&format!("\n🔗 来源: Context7 - {}\n", request.library));
 
         output
+    }
+
+    /// 处理 404 错误：搜索候选库并返回建议
+    async fn handle_not_found_with_search(
+        config: &Context7Config,
+        request: &Context7Request,
+    ) -> Result<String> {
+        // 从 library 参数中提取搜索关键词
+        // 如果是 owner/repo 格式，使用 repo 部分；否则使用整个字符串
+        let search_query = if request.library.contains('/') {
+            request.library.split('/').last().unwrap_or(&request.library)
+        } else {
+            &request.library
+        };
+
+        log_debug!("搜索关键词: {}", search_query);
+
+        // 执行搜索
+        match Self::search_libraries(config, search_query).await {
+            Ok(results) => {
+                if results.is_empty() {
+                    Ok(Self::format_not_found_no_suggestions(&request.library))
+                } else {
+                    Ok(Self::format_not_found_with_suggestions(&request.library, &results))
+                }
+            }
+            Err(e) => {
+                // 搜索失败时，返回基本的 404 错误信息
+                log_debug!("搜索失败: {}", e);
+                Ok(Self::format_not_found_no_suggestions(&request.library))
+            }
+        }
+    }
+
+    /// 搜索库
+    async fn search_libraries(config: &Context7Config, query: &str) -> Result<Vec<SearchResult>> {
+        let client = Client::builder()
+            .timeout(Duration::from_secs(15))
+            .build()?;
+
+        let url = format!("{}/search", config.base_url);
+        log_debug!("Context7 搜索 URL: {}", url);
+
+        let mut req_builder = client.get(&url).query(&[("query", query)]);
+
+        // 添加 API Key (如果有)
+        if let Some(api_key) = &config.api_key {
+            req_builder = req_builder.header(AUTHORIZATION, format!("Bearer {}", api_key));
+        }
+
+        let response = req_builder.send().await?;
+        let status = response.status();
+
+        if !status.is_success() {
+            return Err(anyhow::anyhow!("搜索请求失败: {}", status));
+        }
+
+        let response_text = response.text().await?;
+        let search_response: SearchResponse = serde_json::from_str(&response_text)
+            .map_err(|e| anyhow::anyhow!("解析搜索响应失败: {}", e))?;
+
+        // 返回前 5 个结果
+        Ok(search_response.results.into_iter().take(5).collect())
+    }
+
+    /// 格式化 404 错误消息（无搜索建议）
+    fn format_not_found_no_suggestions(library: &str) -> String {
+        format!(
+            "❌ **未找到库 \"{}\"**\n\n\
+            请检查库标识符是否正确。正确格式为 `owner/repo`，例如：\n\
+            - `vercel/next.js`\n\
+            - `facebook/react`\n\
+            - `spring-projects/spring-framework`\n\n\
+            💡 提示：您可以在 [Context7](https://context7.com) 网站上搜索库。",
+            library
+        )
+    }
+
+    /// 格式化 404 错误消息（带搜索建议）
+    fn format_not_found_with_suggestions(library: &str, results: &[SearchResult]) -> String {
+        let mut output = format!(
+            "❌ **未找到库 \"{}\"**\n\n\
+            💡 **建议**：以下是搜索到的相关库，请使用完整的库标识符重新查询：\n\n",
+            library
+        );
+
+        for (idx, result) in results.iter().enumerate() {
+            // 去掉 id 开头的 /
+            let lib_id = result.id.trim_start_matches('/');
+
+            // 构建库信息行
+            let mut info_parts = Vec::new();
+            if let Some(stars) = result.stars {
+                info_parts.push(format!("⭐ {}", Self::format_stars(stars)));
+            }
+            if let Some(trust_score) = result.trust_score {
+                info_parts.push(format!("信任分数: {:.1}", trust_score));
+            }
+
+            let info_str = if info_parts.is_empty() {
+                String::new()
+            } else {
+                format!(" ({})", info_parts.join(" | "))
+            };
+
+            output.push_str(&format!(
+                "{}. **{}**{}\n",
+                idx + 1,
+                lib_id,
+                info_str
+            ));
+
+            // 添加描述（如果有）
+            if let Some(desc) = &result.description {
+                // 截取前 100 个字符
+                let short_desc = if desc.len() > 100 {
+                    format!("{}...", &desc[..100])
+                } else {
+                    desc.clone()
+                };
+                output.push_str(&format!("   {}\n", short_desc));
+            }
+            output.push('\n');
+        }
+
+        output.push_str("---\n\n");
+        output.push_str("请使用完整的库标识符重新查询，例如：\n");
+        output.push_str("```json\n");
+        if let Some(first) = results.first() {
+            let lib_id = first.id.trim_start_matches('/');
+            output.push_str(&format!(
+                "{{ \"library\": \"{}\", \"topic\": \"core\" }}\n",
+                lib_id
+            ));
+        }
+        output.push_str("```\n");
+
+        output
+    }
+
+    /// 格式化 stars 数量（大数字使用 K 表示）
+    fn format_stars(stars: u64) -> String {
+        if stars >= 1000 {
+            format!("{:.1}K", stars as f64 / 1000.0)
+        } else {
+            stars.to_string()
+        }
     }
 }

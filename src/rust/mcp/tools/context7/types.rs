@@ -80,3 +80,29 @@ pub struct TestConnectionResponse {
     pub preview: Option<String>,
 }
 
+/// 库搜索响应
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResponse {
+    /// 搜索结果列表
+    pub results: Vec<SearchResult>,
+}
+
+/// 搜索结果项
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SearchResult {
+    /// 库标识符 (格式: /owner/repo)
+    pub id: String,
+    /// 库名称
+    pub title: Option<String>,
+    /// 库描述
+    pub description: Option<String>,
+    /// GitHub stars 数量
+    pub stars: Option<u64>,
+    /// 信任分数 (0-10)
+    #[serde(rename = "trustScore")]
+    pub trust_score: Option<f64>,
+    /// 基准测试分数
+    #[serde(rename = "benchmarkScore")]
+    pub benchmark_score: Option<f64>,
+}
+
