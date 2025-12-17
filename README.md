@@ -2,10 +2,10 @@
 
 # 三术 / sanshu
 
-[![CI](https://img.shields.io/github/actions/workflow/status/imhuso/sanshu/CI.yml?branch=main&style=flat-square&logo=github)](https://github.com/imhuso/sanshu/actions)
-[![License](https://img.shields.io/github/license/imhuso/sanshu?style=flat-square)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/yuaotian/sanshu/CI.yml?branch=main&style=flat-square&logo=github)](https://github.com/yuaotian/sanshu/actions)
+[![License](https://img.shields.io/github/license/yuaotian/sanshu?style=flat-square)](LICENSE)
 [![Rust Version](https://img.shields.io/badge/rust-1.70%2B-orange.svg?style=flat-square&logo=rust)](https://www.rust-lang.org/)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg?style=flat-square)](https://github.com/imhuso/sanshu)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg?style=flat-square)](https://github.com/yuaotian/sanshu)
 [![MCP Protocol](https://img.shields.io/badge/protocol-MCP-green.svg?style=flat-square&logo=openai)](https://modelcontextprotocol.io/)
 
 > **道生一，一生二，二生三，三生万物**
@@ -100,7 +100,7 @@
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/imhuso/sanshu.git
+git clone https://github.com/yuaotian/sanshu.git
 cd sanshu
 
 # 2. 安装前端依赖
@@ -238,11 +238,127 @@ pnpm preview
 
 ```bash
 # 添加 Tap
-brew tap imhuso/tap
+brew tap yuaotian/tap
 
 # 安装
 brew install sanshu
 ```
+
+### 📦 安装与环境配置（下载版）
+
+如果您选择直接下载预编译的可执行文件，请按照以下步骤完成安装和环境配置。
+
+#### 1️⃣ 下载并放置可执行文件
+
+从 [Releases 页面](https://github.com/yuaotian/sanshu/releases) 下载对应平台的压缩包，解压后将可执行文件放置到以下推荐目录：
+
+| 平台 | 推荐安装路径 | 说明 |
+|------|-------------|------|
+| **Windows** | `C:\Program Files\sanshu\` | 需要管理员权限 |
+| **Windows** | `%LOCALAPPDATA%\sanshu\` | 无需管理员权限（推荐） |
+| **Linux** | `~/.local/bin/` | 用户级安装（推荐） |
+| **Linux** | `/usr/local/bin/` | 系统级安装，需要 sudo |
+| **macOS** | `~/.local/bin/` | 用户级安装（推荐） |
+| **macOS** | `/usr/local/bin/` | 系统级安装，需要 sudo |
+
+#### 2️⃣ 配置环境变量
+
+将可执行文件所在目录添加到系统 PATH 环境变量中：
+
+<details>
+<summary>🪟 Windows 配置方法</summary>
+
+**方法一：通过系统设置（图形界面）**
+
+1. 按 `Win + R`，输入 `sysdm.cpl`，回车
+2. 点击「高级」选项卡 → 「环境变量」
+3. 在「用户变量」或「系统变量」中找到 `Path`，点击「编辑」
+4. 点击「新建」，添加可执行文件所在目录（如 `C:\Program Files\sanshu\`）
+5. 点击「确定」保存，**重启终端**使配置生效
+
+**方法二：通过 PowerShell 命令**
+
+```powershell
+# 添加到用户级 PATH（无需管理员权限）
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+[Environment]::SetEnvironmentVariable("Path", "$userPath;C:\Program Files\sanshu\", "User")
+
+# 或添加到系统级 PATH（需要管理员权限）
+$machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+[Environment]::SetEnvironmentVariable("Path", "$machinePath;C:\Program Files\sanshu\", "Machine")
+```
+
+> ⚠️ 配置完成后需要**重启终端**或**重新登录**使配置生效。
+
+</details>
+
+<details>
+<summary>🐧 Linux 配置方法</summary>
+
+根据您使用的 Shell，编辑对应的配置文件：
+
+```bash
+# Bash 用户（编辑 ~/.bashrc）
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Zsh 用户（编辑 ~/.zshrc）
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+# 或编辑 ~/.profile（对所有 Shell 生效）
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.profile
+source ~/.profile
+```
+
+</details>
+
+<details>
+<summary>🍎 macOS 配置方法</summary>
+
+根据您使用的 Shell，编辑对应的配置文件：
+
+```bash
+# Zsh 用户（macOS 默认 Shell，编辑 ~/.zshrc）
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+# Bash 用户（编辑 ~/.bash_profile）
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bash_profile
+source ~/.bash_profile
+```
+
+</details>
+
+#### 3️⃣ 验证安装
+
+打开**新的终端窗口**，运行以下命令验证配置是否成功：
+
+```bash
+# 使用中文命令名
+三术 --version
+
+# 或使用拼音命令名
+sanshu --version
+```
+
+如果正确显示版本号（如 `sanshu 0.2.x`），说明环境变量配置成功。
+
+#### ⚠️ 重要说明
+
+> **环境变量配置是 MCP 客户端正常工作的前提条件。**
+>
+> - ✅ **已配置环境变量**：MCP 配置中可直接使用 `"command": "三术"` 或 `"command": "sanshu"`
+> - ❌ **未配置环境变量**：需要在 MCP 配置中使用**完整路径**，例如：
+>   ```json
+>   {
+>     "mcpServers": {
+>       "sanshu": {
+>         "command": "C:\\Program Files\\sanshu\\三术.exe"
+>       }
+>     }
+>   }
+>   ```
 
 ### ⚙️ 配置 MCP 客户端
 
@@ -781,7 +897,7 @@ git push origin v0.2.4
 
 发布完成后，可通过以下方式验证：
 
-1. **GitHub Releases**：访问 [Releases 页面](https://github.com/imhuso/sanshu/releases) 确认新版本已发布
+1. **GitHub Releases**：访问 [Releases 页面](https://github.com/yuaotian/sanshu/releases) 确认新版本已发布
 2. **构建产物**：检查 Release 中是否包含所有平台的构建产物
 3. **Homebrew 更新**：
    ```bash
@@ -986,7 +1102,7 @@ copies or substantial portions of the Software.
 
 特此感谢以下项目和贡献者：
 
-- [寸止 (Cunzhi)](https://github.com/imhuso/cunzhi) - 为本项目提供了坚实的基础
+- [寸止 (Cunzhi)](https://github.com/yuaotian/cunzhi) - 为本项目提供了坚实的基础
 - [Model Context Protocol](https://modelcontextprotocol.io/) - 提供了 AI 与工具协同的标准协议
 - [Tauri](https://tauri.app/) - 提供了跨平台桌面应用框架
 - [Augment Code](https://www.augmentcode.com/) - 提供了优秀的 AI 编程助手
