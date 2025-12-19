@@ -113,10 +113,12 @@ impl ProxyDetector {
         let client_builder = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(3));
         
+        // 统一使用 Proxy::all() 让所有请求都走代理
+        // 这样无论测试 http 还是 https 端点都能正确走代理
         let client = match proxy_info.proxy_type {
             ProxyType::Http => {
-                // HTTP/HTTPS 代理
-                match reqwest::Proxy::http(&proxy_url) {
+                // HTTP 代理：使用 all() 同时代理 http 和 https 请求
+                match reqwest::Proxy::all(&proxy_url) {
                     Ok(proxy) => client_builder.proxy(proxy),
                     Err(e) => {
                         log::debug!("❌ 创建HTTP代理失败: {}", e);
@@ -125,7 +127,7 @@ impl ProxyDetector {
                 }
             }
             ProxyType::Socks5 => {
-                // SOCKS5 代理
+                // SOCKS5 代理：同时用于 HTTP 和 HTTPS
                 match reqwest::Proxy::all(&proxy_url) {
                     Ok(proxy) => client_builder.proxy(proxy),
                     Err(e) => {

@@ -26,14 +26,18 @@ pub fn create_http_client(
         
         let proxy_url = proxy.to_url();
         
+        // 使用 Proxy::all() 让所有请求（http 和 https）都走代理
+        // 这对于 Clash 等混合代理端口尤其重要，因为它们同时支持 HTTP 和 HTTPS 代理
         let reqwest_proxy = match proxy.proxy_type {
             super::proxy::ProxyType::Http => {
-                // HTTP/HTTPS 代理
-                reqwest::Proxy::http(&proxy_url)
+                // HTTP 代理：使用 all() 同时代理 http 和 https 请求
+                // 注意：reqwest::Proxy::http() 只代理 http:// 请求，不代理 https://
+                // 而 GitHub API 等都是 https，所以必须用 all() 或同时配置 http + https
+                reqwest::Proxy::all(&proxy_url)
                     .map_err(|e| format!("创建HTTP代理失败: {}", e))?
             }
             super::proxy::ProxyType::Socks5 => {
-                // SOCKS5 代理（同时用于HTTP和HTTPS）
+                // SOCKS5 代理：同时用于 HTTP 和 HTTPS
                 reqwest::Proxy::all(&proxy_url)
                     .map_err(|e| format!("创建SOCKS5代理失败: {}", e))?
             }

@@ -127,55 +127,92 @@ async function getCurrentVersion(): Promise<string> {
   }
 }
 
-// 检查GitHub最新版本
-async function checkLatestVersion(): Promise<VersionInfo | null> {
-  if (isChecking.value) {
-    return versionInfo.value
-  }
-
-  try {
-    isChecking.value = true
-
-    const response = await fetch('https://api.github.com/repos/yuaotian/sanshu/releases/latest', {
-      headers: {
-        Accept: 'application/vnd.github.v3+json',
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error(`GitHub API请求失败: ${response.status}`)
-    }
-
-    const release = await response.json()
-    // 提取版本号，处理中文tag的情况
-    let latestVersion = release.tag_name
-    // 移除前缀 v 和中文字符，只保留数字和点
-    latestVersion = latestVersion.replace(/^v/, '').replace(/[^\d.]/g, '')
-    const currentVersion = await getCurrentVersion()
-
-    const hasUpdate = compareVersions(latestVersion, currentVersion) > 0
-
-    const info: VersionInfo = {
-      current: currentVersion,
-      latest: latestVersion,
-      hasUpdate,
-      releaseUrl: release.html_url,
-      releaseNotes: release.body || '暂无更新说明',
-    }
-
-    versionInfo.value = info
-    lastCheckTime.value = new Date()
-
-    return info
-  }
-  catch (error) {
-    console.error('检查版本更新失败:', error)
-    return null
-  }
-  finally {
-    isChecking.value = false
-  }
+// 将后端返回的 UpdateInfo 转换为前端使用的 VersionInfo
+function mapUpdateInfoToVersionInfo(updateInfo: UpdateInfo): VersionInfo {
+	  return {
+	    current: updateInfo.current_version,
+	    latest: updateInfo.latest_version,
+	    hasUpdate: updateInfo.available,
+	    // 这里直接使用后端提供的下载地址或 release 页面 URL
+	    releaseUrl: updateInfo.download_url,
+	    releaseNotes: updateInfo.release_notes,
+	    networkStatus: updateInfo.network_status,
+	  }
 }
+
+// 仅使用浏览器直接访问 GitHub 的兜底实现
+// 默认情况下优先走 Tauri 后端（带代理/网络检测），只有在后端不可用时才会调用本函数
+async function checkLatestVersionViaGithub(): Promise<VersionInfo | null> {
+	  try {
+	    const response = await fetch('https://api.github.com/repos/yuaotian/sanshu/releases/latest', {
+	      headers: {
+	        Accept: 'application/vnd.github.v3+json',
+	      },
+	    })
+
+	    if (!response.ok) {
+	      throw new Error(`GitHub API请求失败: ${response.status}`)
+	    }
+
+	    const release = await response.json()
+	    // 提取版本号，处理中文tag的情况
+	    let latestVersion = release.tag_name
+	    // 移除前缀 v 和中文字符，只保留数字和点
+	    latestVersion = latestVersion.replace(/^v/, '').replace(/[^\d.]/g, '')
+	    const currentVersion = await getCurrentVersion()
+
+	    const hasUpdate = compareVersions(latestVersion, currentVersion) > 0
+
+	    const info: VersionInfo = {
+	      current: currentVersion,
+	      latest: latestVersion,
+	      hasUpdate,
+	      releaseUrl: release.html_url,
+	      releaseNotes: release.body || '暂无更新说明',
+	    }
+
+	    versionInfo.value = info
+	    lastCheckTime.value = new Date()
+
+	    return info
+	  }
+	  catch (error) {
+	    // 这里使用 warn 级别，避免在控制台产生过多红色错误
+	    console.warn('通过 GitHub API 检查更新失败:', error)
+	    return null
+	  }
+	}
+
+// 统一的版本检查入口
+// 优先通过 Tauri 后端 `check_for_updates`（带智能代理检测，如 7890 等端口），
+// 只有在后端不可用时才退回到浏览器直连 GitHub
+async function checkLatestVersion(): Promise<VersionInfo | null> {
+	  if (isChecking.value) {
+	    return versionInfo.value
+	  }
+
+	  try {
+	    isChecking.value = true
+
+	    // 1. 首选后端 Tauri 更新检查（包含代理和网络状态探测）
+	    const updateInfo = await checkForUpdatesWithTauri()
+	    if (updateInfo) {
+	      const info = mapUpdateInfoToVersionInfo(updateInfo)
+	      versionInfo.value = info
+	      lastCheckTime.value = new Date()
+	      // 同步网络状态，便于前端展示
+	      if (updateInfo.network_status)
+	        networkStatus.value = updateInfo.network_status
+	      return info
+	    }
+
+	    // 2. 后端不可用时，兜底采用浏览器直接访问 GitHub
+	    return await checkLatestVersionViaGithub()
+	  }
+	  finally {
+	    isChecking.value = false
+	  }
+	}
 
 // 自动检查更新并弹窗（应用启动时调用）
 async function autoCheckUpdate(): Promise<boolean> {
@@ -270,47 +307,47 @@ async function openReleasePage(): Promise<void> {
   }
 }
 
-// 使用改进的更新检查（避免Tauri原生updater的中文tag问题）
-async function checkForUpdatesWithTauri(): Promise<UpdateInfo | null> {
-  try {
-    const updateInfo = await invoke('check_for_updates') as UpdateInfo
-    console.log('✅ Tauri 更新检查成功:', updateInfo)
+	// 使用改进的更新检查（避免Tauri原生updater的中文tag问题）
+	async function checkForUpdatesWithTauri(): Promise<UpdateInfo | null> {
+	  try {
+	    const updateInfo = await invoke('check_for_updates') as UpdateInfo
+	    console.log('✅ Tauri 更新检查成功:', updateInfo)
 
-    // 保存网络状态信息（新增）
-    if (updateInfo.network_status) {
-      networkStatus.value = updateInfo.network_status
-      console.log('🌐 网络状态:', updateInfo.network_status)
-    }
+	    // 保存网络状态信息（新增）
+	    if (updateInfo.network_status) {
+	      networkStatus.value = updateInfo.network_status
+	      console.log('🌐 网络状态:', updateInfo.network_status)
+	    }
 
-    return updateInfo
-  }
-  catch (error) {
-    console.error('❌ Tauri更新检查失败，使用 GitHub API fallback:', error)
+	    return updateInfo
+	  }
+	  catch (error) {
+	    console.error('❌ Tauri更新检查失败，将尝试 GitHub API 兜底:', error)
 
-    // 如果Tauri检查失败，fallback到前端GitHub API检查
-    const githubInfo = await checkLatestVersion()
-
-    if (githubInfo?.hasUpdate) {
-      // 创建默认的网络状态（fallback 模式）
-      const defaultNetworkStatus: NetworkStatus = {
-        country: 'UNKNOWN',
-        using_proxy: false,
-        github_reachable: true, // 如果能获取到 GitHub 信息，说明可达
-      }
-
-      return {
-        available: true,
-        current_version: githubInfo.current,
-        latest_version: githubInfo.latest,
-        release_notes: githubInfo.releaseNotes,
-        download_url: githubInfo.releaseUrl,
-        network_status: defaultNetworkStatus,
-      }
-    }
-
-    return null
-  }
-}
+	    // 如果Tauri检查失败，fallback到前端 GitHub API 检查（不再递归调用 checkLatestVersion）
+	    const githubInfo = await checkLatestVersionViaGithub()
+	
+	    if (githubInfo?.hasUpdate) {
+	      // 创建默认的网络状态（fallback 模式）
+	      const defaultNetworkStatus: NetworkStatus = {
+	        country: 'UNKNOWN',
+	        using_proxy: false,
+	        github_reachable: true, // 如果能获取到 GitHub 信息，说明可达
+	      }
+	
+	      return {
+	        available: true,
+	        current_version: githubInfo.current,
+	        latest_version: githubInfo.latest,
+	        release_notes: githubInfo.releaseNotes,
+	        download_url: githubInfo.releaseUrl,
+	        network_status: defaultNetworkStatus,
+	      }
+	    }
+	
+	    return null
+	  }
+	}
 
 // 一键更新功能
 async function performOneClickUpdate(): Promise<void> {
