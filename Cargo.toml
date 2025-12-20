@@ -64,6 +64,7 @@ notify = "6.0"
 notify-debouncer-full = "0.3"
 once_cell = "1.19"
 rand = "0.8"
+zip = "7.0.0"
 
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }

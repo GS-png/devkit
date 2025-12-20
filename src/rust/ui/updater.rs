@@ -1,6 +1,6 @@
 use tauri::{AppHandle, Emitter, State};
 use serde::{Deserialize, Serialize};
-use std::{fs, io::Write, path::PathBuf, process::Command};
+use std::{fs, io::{Read, Write}, path::PathBuf, process::Command};
 use crate::config::AppState;
 use crate::network::{detect_geo_location, ProxyDetector, ProxyInfo, create_update_client, create_download_client};
 use crate::network::geo::GeoLocation;
@@ -523,15 +523,20 @@ async fn install_linux_update(file_path: &PathBuf) -> Result<(), String> {
     }
 }
 
-/// 从压缩包安装更新
+/// 从压缩包安装更新（支持多文件更新）
 async fn install_from_archive(file_path: &PathBuf) -> Result<(), String> {
     log::info!("📦 开始从压缩包安装更新: {}", file_path.display());
 
-    // 获取当前可执行文件的路径
+    // 获取当前可执行文件的路径和所在目录
     let current_exe = std::env::current_exe()
         .map_err(|e| format!("无法获取当前可执行文件路径: {}", e))?;
 
+    let app_dir = current_exe.parent()
+        .ok_or_else(|| "无法获取应用程序目录".to_string())?
+        .to_path_buf();
+
     log::info!("📍 当前可执行文件路径: {}", current_exe.display());
+    log::info!("📂 应用程序目录: {}", app_dir.display());
 
     // 创建临时解压目录
     let temp_dir = std::env::temp_dir().join("sanshu_extract");
@@ -544,36 +549,42 @@ async fn install_from_archive(file_path: &PathBuf) -> Result<(), String> {
 
     log::info!("📂 临时解压目录: {}", temp_dir.display());
 
-    // 根据文件类型解压
+    // 根据文件类型解压，获取解压后的文件列表
     let file_name = file_path.file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("");
 
-    if file_name.ends_with(".tar.gz") {
-        extract_tar_gz(file_path, &temp_dir)?;
+    let extracted_files = if file_name.ends_with(".tar.gz") {
+        extract_tar_gz(file_path, &temp_dir)?
     } else if file_name.ends_with(".zip") {
-        extract_zip(file_path, &temp_dir)?;
+        extract_zip(file_path, &temp_dir)?
     } else {
         return Err("不支持的压缩格式".to_string());
+    };
+
+    log::info!("📋 解压完成，共 {} 个文件需要更新", extracted_files.len());
+    for file in &extracted_files {
+        log::info!("  📄 {}", file.display());
     }
 
-    // 查找新的可执行文件
-    let new_exe = find_executable_in_dir(&temp_dir)?;
-    log::info!("🔍 找到新的可执行文件: {}", new_exe.display());
-
-    // 替换当前可执行文件
-    replace_executable(&current_exe, &new_exe)?;
-
-    // 清理临时目录
-    let _ = fs::remove_dir_all(&temp_dir);
+    // 根据平台执行不同的替换策略
+    if cfg!(target_os = "windows") {
+        // Windows: 使用批处理脚本延迟替换所有文件
+        replace_all_files_windows(&app_dir, &temp_dir, &extracted_files)?;
+    } else {
+        // macOS/Linux: 直接替换所有文件
+        replace_all_files_unix(&app_dir, &extracted_files)?;
+        // 清理临时目录（Unix 平台可以立即清理）
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
 
     log::info!("✅ 更新安装完成！");
     Ok(())
 }
 
 /// 解压 tar.gz 文件
-fn extract_tar_gz(archive_path: &PathBuf, extract_to: &PathBuf) -> Result<(), String> {
-    log::info!("📦 解压 tar.gz 文件");
+fn extract_tar_gz(archive_path: &PathBuf, extract_to: &PathBuf) -> Result<Vec<PathBuf>, String> {
+    log::info!("📦 解压 tar.gz 文件: {}", archive_path.display());
 
     let output = Command::new("tar")
         .args(&["-xzf", archive_path.to_str().unwrap(), "-C", extract_to.to_str().unwrap()])
@@ -585,43 +596,117 @@ fn extract_tar_gz(archive_path: &PathBuf, extract_to: &PathBuf) -> Result<(), St
     }
 
     log::info!("✅ tar.gz 解压完成");
-    Ok(())
+
+    // 收集解压后的所有文件
+    let files = collect_files_in_dir(extract_to)?;
+    log::info!("📋 tar.gz 解压后找到 {} 个文件", files.len());
+
+    if files.is_empty() {
+        return Err("tar.gz 解压完成但没有提取到任何文件".to_string());
+    }
+
+    Ok(files)
 }
 
-/// 解压 zip 文件
-fn extract_zip(archive_path: &PathBuf, extract_to: &PathBuf) -> Result<(), String> {
-    log::info!("📦 解压 zip 文件");
+/// 递归收集目录中的所有文件
+fn collect_files_in_dir(dir: &PathBuf) -> Result<Vec<PathBuf>, String> {
+    let mut files = Vec::new();
 
-    // Windows 使用 PowerShell 解压
-    if cfg!(target_os = "windows") {
-        let ps_command = format!(
-            "Expand-Archive -Path '{}' -DestinationPath '{}' -Force",
-            archive_path.display(),
-            extract_to.display()
-        );
+    if !dir.exists() {
+        log::error!("❌ 目录不存在: {}", dir.display());
+        return Err(format!("目录不存在: {}", dir.display()));
+    }
 
-        let output = Command::new("powershell")
-            .args(&["-Command", &ps_command])
-            .output()
-            .map_err(|e| format!("执行 PowerShell 命令失败: {}", e))?;
+    fn collect_recursive(dir: &PathBuf, files: &mut Vec<PathBuf>) -> Result<(), String> {
+        let entries = fs::read_dir(dir)
+            .map_err(|e| format!("读取目录失败 {}: {}", dir.display(), e))?;
 
-        if !output.status.success() {
-            return Err(format!("PowerShell 解压失败: {}", String::from_utf8_lossy(&output.stderr)));
+        for entry in entries {
+            let entry = entry.map_err(|e| format!("读取目录项失败: {}", e))?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                collect_recursive(&path, files)?;
+            } else {
+                log::info!("📄 发现文件: {}", path.display());
+                files.push(path);
+            }
         }
-    } else {
-        // Unix 系统使用 unzip
-        let output = Command::new("unzip")
-            .args(&["-o", archive_path.to_str().unwrap(), "-d", extract_to.to_str().unwrap()])
-            .output()
-            .map_err(|e| format!("执行 unzip 命令失败: {}", e))?;
+        Ok(())
+    }
 
-        if !output.status.success() {
-            return Err(format!("unzip 解压失败: {}", String::from_utf8_lossy(&output.stderr)));
+    collect_recursive(dir, &mut files)?;
+    Ok(files)
+}
+
+/// 解压 zip 文件（使用 Rust 原生 zip crate，正确处理中文文件名）
+fn extract_zip(archive_path: &PathBuf, extract_to: &PathBuf) -> Result<Vec<PathBuf>, String> {
+    log::info!("📦 开始解压 zip 文件: {}", archive_path.display());
+    log::info!("📂 解压目标目录: {}", extract_to.display());
+
+    // 打开 ZIP 文件
+    let file = fs::File::open(archive_path)
+        .map_err(|e| format!("无法打开 ZIP 文件: {}", e))?;
+
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|e| format!("无法读取 ZIP 归档: {}", e))?;
+
+    log::info!("📋 ZIP 文件包含 {} 个条目", archive.len());
+
+    let mut extracted_files: Vec<PathBuf> = Vec::new();
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)
+            .map_err(|e| format!("无法读取 ZIP 条目 {}: {}", i, e))?;
+
+        // 获取文件名（正确处理 UTF-8 编码的中文文件名）
+        let file_name = file.name().to_string();
+        log::info!("📄 处理条目 {}: {}", i + 1, file_name);
+
+        // 构建目标路径
+        let out_path = extract_to.join(&file_name);
+
+        if file.is_dir() {
+            // 创建目录
+            log::info!("📁 创建目录: {}", out_path.display());
+            fs::create_dir_all(&out_path)
+                .map_err(|e| format!("创建目录失败 {}: {}", out_path.display(), e))?;
+        } else {
+            // 确保父目录存在
+            if let Some(parent) = out_path.parent() {
+                if !parent.exists() {
+                    log::info!("📁 创建父目录: {}", parent.display());
+                    fs::create_dir_all(parent)
+                        .map_err(|e| format!("创建父目录失败 {}: {}", parent.display(), e))?;
+                }
+            }
+
+            // 解压文件
+            let mut out_file = fs::File::create(&out_path)
+                .map_err(|e| format!("创建文件失败 {}: {}", out_path.display(), e))?;
+
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer)
+                .map_err(|e| format!("读取 ZIP 条目内容失败: {}", e))?;
+
+            out_file.write_all(&buffer)
+                .map_err(|e| format!("写入文件失败 {}: {}", out_path.display(), e))?;
+
+            let file_size = buffer.len();
+            log::info!("✅ 解压文件: {} ({} 字节)", out_path.display(), file_size);
+
+            extracted_files.push(out_path);
         }
     }
 
-    log::info!("✅ zip 解压完成");
-    Ok(())
+    log::info!("✅ ZIP 解压完成，共解压 {} 个文件", extracted_files.len());
+
+    // 验证解压结果
+    if extracted_files.is_empty() {
+        return Err("ZIP 解压完成但没有提取到任何文件".to_string());
+    }
+
+    Ok(extracted_files)
 }
 
 /// 在目录中查找可执行文件
@@ -754,7 +839,7 @@ del "%~f0"
     Ok(())
 }
 
-/// Unix 平台替换可执行文件
+/// Unix 平台替换可执行文件（保留用于兼容性）
 fn replace_executable_unix(current_exe: &PathBuf, new_exe: &PathBuf) -> Result<(), String> {
     // 复制新文件到临时位置
     let temp_new = current_exe.with_extension("new");
@@ -778,6 +863,159 @@ fn replace_executable_unix(current_exe: &PathBuf, new_exe: &PathBuf) -> Result<(
         .map_err(|e| format!("替换文件失败: {}", e))?;
 
     log::info!("✅ Unix 平台文件替换完成");
+    Ok(())
+}
+
+/// Windows 平台替换所有文件（使用批处理脚本延迟替换）
+///
+/// # 参数
+/// - `app_dir`: 应用程序目录（目标目录）
+/// - `extract_dir`: 解压临时目录（源目录）
+/// - `files`: 需要替换的文件列表（在 extract_dir 中的路径）
+fn replace_all_files_windows(
+    app_dir: &PathBuf,
+    extract_dir: &PathBuf,
+    files: &[PathBuf]
+) -> Result<(), String> {
+    log::info!("🔧 Windows 平台：准备批处理脚本替换 {} 个文件", files.len());
+
+    // 获取当前可执行文件名（用于重启）
+    let current_exe = std::env::current_exe()
+        .map_err(|e| format!("无法获取当前可执行文件路径: {}", e))?;
+    let exe_name = current_exe.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("等一下.exe");
+
+    let script_path = app_dir.join("update_script.bat");
+
+    // 构建批处理脚本内容
+    let mut script_lines = Vec::new();
+
+    // 脚本头部：设置编码和关闭回显
+    script_lines.push("@echo off".to_string());
+    script_lines.push("chcp 65001 >nul".to_string());
+    script_lines.push("echo 正在更新 sanshu...".to_string());
+    script_lines.push("timeout /t 2 /nobreak >nul".to_string());
+    script_lines.push("".to_string());
+
+    // 备份和复制每个文件
+    for file in files {
+        let file_name = file.file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| format!("无法获取文件名: {}", file.display()))?;
+
+        let source_path = file.display().to_string();
+        let target_path = app_dir.join(file_name);
+        let target_path_str = target_path.display().to_string();
+        let backup_path = app_dir.join(format!("{}.bak", file_name));
+        let backup_path_str = backup_path.display().to_string();
+
+        // 备份旧文件（如果存在）
+        script_lines.push(format!("if exist \"{}\" (", target_path_str));
+        script_lines.push(format!("    copy /y \"{}\" \"{}\" >nul", target_path_str, backup_path_str));
+        script_lines.push(")".to_string());
+
+        // 复制新文件
+        script_lines.push(format!("copy /y \"{}\" \"{}\"", source_path, target_path_str));
+        script_lines.push(format!("if errorlevel 1 ("));
+        script_lines.push(format!("    echo 复制 {} 失败", file_name));
+        script_lines.push(format!(") else ("));
+        script_lines.push(format!("    echo 已更新: {}", file_name));
+        script_lines.push(format!(")"));
+        script_lines.push("".to_string());
+
+        log::info!("📝 添加文件替换命令: {} -> {}", source_path, target_path_str);
+    }
+
+    // 清理临时目录
+    script_lines.push("echo 清理临时文件...".to_string());
+    script_lines.push(format!("rmdir /s /q \"{}\" 2>nul", extract_dir.display()));
+    script_lines.push("".to_string());
+
+    // 重启应用
+    script_lines.push("echo 重启应用...".to_string());
+    let restart_exe_path = app_dir.join(exe_name);
+    script_lines.push(format!("start \"\" \"{}\"", restart_exe_path.display()));
+    script_lines.push("".to_string());
+
+    // 删除脚本自身
+    script_lines.push("del \"%~f0\"".to_string());
+
+    let script_content = script_lines.join("\r\n");
+
+    // 写入脚本文件（使用 UTF-8 with BOM 以支持中文）
+    let mut file = fs::File::create(&script_path)
+        .map_err(|e| format!("创建更新脚本失败: {}", e))?;
+
+    // 写入 UTF-8 BOM
+    file.write_all(&[0xEF, 0xBB, 0xBF])
+        .map_err(|e| format!("写入 BOM 失败: {}", e))?;
+
+    file.write_all(script_content.as_bytes())
+        .map_err(|e| format!("写入脚本内容失败: {}", e))?;
+
+    log::info!("📝 创建 Windows 更新脚本: {}", script_path.display());
+    log::info!("⚠️ Windows 平台需要重启应用以完成更新");
+
+    // 启动脚本（在独立进程中运行，不等待）
+    Command::new("cmd")
+        .args(&["/C", "start", "/min", "", script_path.to_str().unwrap()])
+        .spawn()
+        .map_err(|e| format!("启动更新脚本失败: {}", e))?;
+
+    log::info!("🚀 更新脚本已启动，应用将在退出后自动更新并重启");
+
+    Ok(())
+}
+
+/// Unix 平台替换所有文件（直接替换）
+///
+/// # 参数
+/// - `app_dir`: 应用程序目录（目标目录）
+/// - `files`: 需要替换的文件列表（源文件路径）
+fn replace_all_files_unix(app_dir: &PathBuf, files: &[PathBuf]) -> Result<(), String> {
+    log::info!("🔧 Unix 平台：直接替换 {} 个文件", files.len());
+
+    for file in files {
+        let file_name = file.file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| format!("无法获取文件名: {}", file.display()))?;
+
+        let target_path = app_dir.join(file_name);
+
+        // 备份旧文件（如果存在）
+        if target_path.exists() {
+            let backup_path = app_dir.join(format!("{}.bak", file_name));
+            fs::copy(&target_path, &backup_path)
+                .map_err(|e| format!("备份文件失败 {}: {}", file_name, e))?;
+            log::info!("💾 已备份: {} -> {}", target_path.display(), backup_path.display());
+        }
+
+        // 复制新文件
+        fs::copy(file, &target_path)
+            .map_err(|e| format!("复制文件失败 {}: {}", file_name, e))?;
+
+        // 设置执行权限（对于可执行文件）
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if file_name.ends_with(".exe") || !file_name.contains('.') {
+                let mut perms = fs::metadata(&target_path)
+                    .map_err(|e| format!("获取文件权限失败: {}", e))?
+                    .permissions();
+                perms.set_mode(0o755);
+                fs::set_permissions(&target_path, perms)
+                    .map_err(|e| format!("设置执行权限失败: {}", e))?;
+                log::info!("🔐 已设置执行权限: {}", target_path.display());
+            }
+        }
+
+        log::info!("✅ 已更新: {}", file_name);
+    }
+
+    log::info!("✅ Unix 平台所有文件替换完成");
+    log::info!("⚠️ 建议重启应用以加载新版本");
+
     Ok(())
 }
 
