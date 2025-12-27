@@ -406,28 +406,64 @@ pub async fn get_acemcp_config(state: State<'_, AppState>) -> Result<AcemcpConfi
 
 #[derive(Debug, serde::Serialize)]
 pub struct DebugSearchResult {
+    /// 搜索是否成功
     pub success: bool,
+    /// 搜索结果文本
     pub result: Option<String>,
+    /// 错误信息
     pub error: Option<String>,
+    /// 请求发送时间 ISO8601 格式
+    pub request_time: String,
+    /// 响应接收时间 ISO8601 格式
+    pub response_time: String,
+    /// 总耗时（毫秒）
+    pub total_duration_ms: u64,
+    /// 搜索结果数量
+    pub result_count: Option<usize>,
+    /// 项目路径
+    pub project_path: String,
+    /// 查询语句
+    pub query: String,
 }
 
-/// 纯 Rust 的调试命令：直接执行 acemcp 搜索，返回结果
+/// 纯 Rust 的调试命令：直接执行 acemcp 搜索，返回结果及耗时统计
 #[tauri::command]
 pub async fn debug_acemcp_search(
     project_root_path: String,
     query: String,
     _app: AppHandle,
 ) -> Result<DebugSearchResult, String> {
-    let req = AcemcpRequest { project_root_path, query };
+    use std::time::Instant;
     
-    // 调用搜索函数（日志会通过 log crate 输出到 stderr）
+    // 记录请求开始时间
+    let request_time = chrono::Utc::now();
+    let request_time_str = request_time.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let start_instant = Instant::now();
+    
+    let req = AcemcpRequest { 
+        project_root_path: project_root_path.clone(), 
+        query: query.clone() 
+    };
+    
+    // 调用搜索函数（日志会通过 log crate 输出到日志文件）
+    log::info!("[调试搜索] 开始执行: project={}, query={}", project_root_path, query);
     let search_result = AcemcpTool::search_context(req).await;
+    
+    // 记录响应接收时间
+    let response_time = chrono::Utc::now();
+    let response_time_str = response_time.format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+    let total_duration_ms = start_instant.elapsed().as_millis() as u64;
+    
+    log::info!("[调试搜索] 执行完成: 耗时 {}ms", total_duration_ms);
     
     match search_result {
         Ok(result) => {
             let mut result_text = String::new();
+            let mut result_count: Option<usize> = None;
+            
             if let Ok(val) = serde_json::to_value(&result) {
                 if let Some(arr) = val.get("content").and_then(|v| v.as_array()) {
+                    result_count = Some(arr.len());
                     for item in arr {
                         if item.get("type").and_then(|t| t.as_str()) == Some("text") {
                             if let Some(txt) = item.get("text").and_then(|t| t.as_str()) {
@@ -442,17 +478,33 @@ pub async fn debug_acemcp_search(
                 success: true,
                 result: Some(result_text),
                 error: None,
+                request_time: request_time_str,
+                response_time: response_time_str,
+                total_duration_ms,
+                result_count,
+                project_path: project_root_path,
+                query,
             })
         }
         Err(e) => {
+            let error_msg = format!("执行失败: {}", e);
+            log::error!("[调试搜索] 错误: {}", error_msg);
+            
             Ok(DebugSearchResult {
                 success: false,
                 result: None,
-                error: Some(format!("执行失败: {}", e)),
+                error: Some(error_msg),
+                request_time: request_time_str,
+                response_time: response_time_str,
+                total_duration_ms,
+                result_count: None,
+                project_path: project_root_path,
+                query,
             })
         }
     }
 }
+
 
 /// 执行acemcp工具
 #[tauri::command]
