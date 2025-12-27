@@ -19,6 +19,8 @@ pub struct SaveAcemcpConfigArgs {
     pub text_extensions: Vec<String>,
     #[serde(alias = "excludePatterns", alias = "_exclude_patterns")]
     pub exclude_patterns: Vec<String>,
+    #[serde(alias = "watchDebounceMs", alias = "watch_debounce_ms")]
+    pub watch_debounce_ms: Option<u64>, // 文件监听防抖延迟（毫秒）
 }
 
 #[tauri::command]
@@ -51,6 +53,7 @@ pub async fn save_acemcp_config(
         config.mcp_config.acemcp_max_lines_per_blob = Some(args.max_lines_per_blob);
         config.mcp_config.acemcp_text_extensions = Some(args.text_extensions.clone());
         config.mcp_config.acemcp_exclude_patterns = Some(args.exclude_patterns.clone());
+        config.mcp_config.acemcp_watch_debounce_ms = args.watch_debounce_ms;
     }
 
     save_config(&state, &app)
@@ -271,6 +274,7 @@ pub struct AcemcpConfigResponse {
     pub max_lines_per_blob: u32,
     pub text_extensions: Vec<String>,
     pub exclude_patterns: Vec<String>,
+    pub watch_debounce_ms: u64, // 文件监听防抖延迟（毫秒），默认 180000 (3分钟)
 }
 
 #[tauri::command]
@@ -302,6 +306,7 @@ pub async fn get_acemcp_config(state: State<'_, AppState>) -> Result<AcemcpConfi
         exclude_patterns: config.mcp_config.acemcp_exclude_patterns.clone().unwrap_or_else(|| {
             vec!["node_modules".to_string(), ".git".to_string(), "target".to_string(), "dist".to_string()]
         }),
+        watch_debounce_ms: config.mcp_config.acemcp_watch_debounce_ms.unwrap_or(180_000),
     })
 }
 

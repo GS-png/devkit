@@ -33,6 +33,7 @@ const config = ref({
   max_lines_per_blob: 800,
   text_extensions: [] as string[],
   exclude_patterns: [] as string[],
+  watch_debounce_minutes: 3, // 文件监听防抖延迟（分钟），默认 3 分钟
 })
 
 const loadingConfig = ref(false)
@@ -78,6 +79,7 @@ async function loadAcemcpConfig() {
       max_lines_per_blob: res.max_lines_per_blob,
       text_extensions: res.text_extensions,
       exclude_patterns: res.exclude_patterns,
+      watch_debounce_minutes: Math.round((res.watch_debounce_ms || 180000) / 60000), // 毫秒转分钟
     }
 
     // 确保选项存在
@@ -111,6 +113,7 @@ async function saveConfig() {
         maxLinesPerBlob: config.value.max_lines_per_blob,
         textExtensions: config.value.text_extensions,
         excludePatterns: config.value.exclude_patterns,
+        watchDebounceMs: config.value.watch_debounce_minutes * 60000, // 分钟转毫秒
       },
     })
     message.success('配置已保存')
@@ -394,10 +397,43 @@ defineExpose({ saveConfig })
                   </div>
                   <div>
                     <div class="toggle-title">自动索引</div>
-                    <div class="toggle-desc">文件变更时自动更新 (1.5s 防抖)</div>
+                    <div class="toggle-desc">文件变更时自动更新索引</div>
                   </div>
                 </div>
                 <n-switch :value="autoIndexEnabled" @update:value="toggleAutoIndex" />
+              </div>
+
+              <n-divider class="my-3" />
+
+              <n-form-item label="防抖延迟时间" :show-feedback="false">
+                <div class="debounce-input-wrapper">
+                  <n-input-number
+                    v-model:value="config.watch_debounce_minutes"
+                    :min="1"
+                    :max="30"
+                    :step="1"
+                    class="debounce-input"
+                  />
+                  <span class="debounce-unit">分钟</span>
+                </div>
+                <template #label>
+                  <div class="form-label-with-desc">
+                    <span>防抖延迟时间</span>
+                    <n-tooltip trigger="hover">
+                      <template #trigger>
+                        <div class="i-carbon-help text-xs opacity-50 ml-1" />
+                      </template>
+                      文件修改后等待指定时间无新修改才触发索引更新
+                    </n-tooltip>
+                  </div>
+                </template>
+              </n-form-item>
+
+              <div class="flex justify-end mt-3">
+                <n-button type="primary" size="small" @click="saveConfig">
+                  <template #icon><div class="i-carbon-save" /></template>
+                  保存配置
+                </n-button>
               </div>
             </ConfigSection>
 
@@ -528,5 +564,31 @@ defineExpose({ saveConfig })
 /* 项目列表滚动容器 */
 .project-list-scrollbar {
   max-height: 55vh;
+}
+
+/* 防抖延迟输入 */
+.debounce-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.debounce-input {
+  width: 100px;
+}
+
+.debounce-unit {
+  font-size: 13px;
+  color: var(--color-on-surface-secondary, #6b7280);
+}
+
+:root.dark .debounce-unit {
+  color: #9ca3af;
+}
+
+/* 带描述的表单标签 */
+.form-label-with-desc {
+  display: flex;
+  align-items: center;
 }
 </style>
