@@ -1230,6 +1230,26 @@ pub async fn test_acemcp_proxy_speed(
                    display_q, 
                    search_metric.proxy_time_ms.map_or("-".to_string(), |v| v.to_string()),
                    search_metric.direct_time_ms.map_or("-".to_string(), |v| v.to_string()));
+        
+        // 输出搜索结果预览摘要
+        if let Some(ref preview) = search_metric.search_result_preview {
+            log::info!("📄 [SpeedTest] 搜索结果: 匹配数={}, 响应长度={}B", 
+                       preview.total_matches, preview.response_length);
+            // 输出第一个片段的预览（截断显示）
+            if let Some(first_snippet) = preview.snippets.first() {
+                let snippet_preview = if first_snippet.snippet.len() > 100 {
+                    format!("{}...", &first_snippet.snippet[..100])
+                } else {
+                    first_snippet.snippet.clone()
+                };
+                // 去除换行符以便日志更整洁
+                let snippet_oneline = snippet_preview.replace('\n', " ↵ ");
+                log::debug!("📝 [SpeedTest] 首个片段: file={}, content={}", 
+                           first_snippet.file_path, snippet_oneline);
+            }
+        } else {
+            log::debug!("📝 [SpeedTest] 未获取到搜索结果预览");
+        }
 
         metrics.push(search_metric);
     }
@@ -1843,6 +1863,15 @@ async fn search_endpoint(client: &reqwest::Client, url: &str, token: &str, paylo
     
     // 解析响应内容，提取搜索结果预览
     let body = response.text().await.unwrap_or_default();
+    
+    // 输出原始响应内容用于调试（截断显示）
+    let body_preview = if body.len() > 500 {
+        format!("{}... (total {}B)", &body[..500], body.len())
+    } else {
+        body.clone()
+    };
+    log::debug!("🔍 [SpeedTest] 搜索原始响应: {}", body_preview);
+    
     let preview = parse_search_result_preview(&body);
     
     Ok(SearchEndpointResult {
@@ -1860,7 +1889,9 @@ fn parse_search_result_preview(body: &str) -> Option<super::types::SearchResultP
     // 尝试解析 JSON 响应
     let json: serde_json::Value = match serde_json::from_str(body) {
         Ok(v) => v,
-        Err(_) => {
+        Err(e) => {
+            log::warn!("⚠️ [SpeedTest] 搜索响应不是有效 JSON: error={}, body={}", e, 
+                      if body.len() > 100 { &body[..100] } else { body });
             // 如果不是 JSON，返回基本信息
             return Some(SearchResultPreview {
                 total_matches: 0,
@@ -1870,9 +1901,97 @@ fn parse_search_result_preview(body: &str) -> Option<super::types::SearchResultP
         }
     };
     
-    // ACE API 返回的搜索结果通常在 content 或 results 字段中
+    // 输出 JSON 顶层键用于调试
+    if let Some(obj) = json.as_object() {
+        let keys: Vec<&str> = obj.keys().map(|s| s.as_str()).collect();
+        log::debug!("🔍 [SpeedTest] JSON 顶层键: {:?}", keys);
+    }
+    
+    // ACE API 返回的搜索结果在 formatted_retrieval 字段中（字符串格式）
     let mut snippets = Vec::new();
     let mut total_matches = 0;
+    
+    // 优先检查 formatted_retrieval 字段（ACE API 的标准搜索结果字段）
+    if let Some(formatted) = json.get("formatted_retrieval").and_then(|v| v.as_str()) {
+        log::debug!("🔍 [SpeedTest] 发现 formatted_retrieval 字段, 长度={}", formatted.len());
+        
+        if !formatted.is_empty() && formatted != "No relevant code context found for your query." {
+            // ACE 格式通常是按 "---" 或空行分隔的多个代码块
+            // 每个块包含文件路径和代码内容
+            let blocks: Vec<&str> = formatted
+                .split("\n---\n")
+                .chain(formatted.split("\n\n"))
+                .filter(|b| !b.trim().is_empty())
+                .collect();
+            
+            total_matches = blocks.len().min(10); // 估计匹配数
+            
+            for block in blocks.iter().take(3) {
+                let lines: Vec<&str> = block.lines().collect();
+                if lines.is_empty() {
+                    continue;
+                }
+                
+                // 尝试从第一行提取文件路径
+                // ACE 格式可能是 "Path: xxx" 或 "File: xxx" 或直接是路径
+                let first_line = lines.first().unwrap_or(&"");
+                let file_path = first_line
+                    .strip_prefix("Path: ")
+                    .or_else(|| first_line.strip_prefix("File: "))
+                    .or_else(|| first_line.strip_prefix("# "))
+                    .or_else(|| {
+                        // 如果第一行看起来是文件路径（包含 / 或 . 扩展名）
+                        if first_line.contains('/') || first_line.contains('.') {
+                            Some(*first_line)
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or("code snippet")
+                    .to_string();
+                
+                // 提取代码片段（去除路径行，取前10行）
+                let snippet: String = lines.iter()
+                    .skip(1)
+                    .take(10)
+                    .copied()
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                
+                let snippet_content = if snippet.is_empty() {
+                    // 如果没有内容，使用整个块（可能第一行不是路径）
+                    lines.iter().take(10).copied().collect::<Vec<_>>().join("\n")
+                } else {
+                    snippet
+                };
+                
+                if !snippet_content.is_empty() {
+                    snippets.push(SearchResultSnippet {
+                        file_path,
+                        snippet: if snippet_content.len() > 300 {
+                            format!("{}...", &snippet_content[..300])
+                        } else {
+                            snippet_content
+                        },
+                        line_number: None,
+                    });
+                }
+            }
+        }
+        
+        // 如果成功解析了 formatted_retrieval，直接返回
+        if total_matches > 0 || !snippets.is_empty() {
+            log::info!("🔍 [SpeedTest] 从 formatted_retrieval 解析: matches={}, snippets={}", 
+                      total_matches, snippets.len());
+            return Some(SearchResultPreview {
+                total_matches,
+                snippets,
+                response_length,
+            });
+        }
+    }
+    
+    // 回退：尝试从其他字段提取（兼容其他 API 格式）
     
     // 尝试从不同的 JSON 结构中提取结果
     if let Some(content) = json.get("content") {

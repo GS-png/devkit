@@ -1205,7 +1205,7 @@ function formatRelativeTime(timeStr: string | null): string {
                           <div class="px-4 py-3 border-b border-slate-100 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between">
                             <div class="flex items-center gap-2">
                               <div class="i-fa6-solid-magnifying-glass text-blue-500" />
-                              <span class="font-medium text-sm text-gray-800 dark:text-gray-100">{{ metric.name }}</span>
+                              <span class="font-medium text-sm text-gray-800 text-gray-100">{{ metric.name }}</span>
                             </div>
                             <div class="flex items-center gap-3 text-xs font-mono">
                               <span class="text-gray-400">匹配: {{ metric.search_result_preview?.total_matches || 0 }}</span>
