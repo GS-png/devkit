@@ -85,24 +85,8 @@ fn is_sou_enabled() -> bool {
 async fn try_trigger_background_index(project_root: &str) -> Result<()> {
     use super::super::acemcp::mcp::{get_initial_index_state, ensure_initial_index_background, InitialIndexState};
 
-    // 获取 acemcp 配置
-    let config = crate::config::load_standalone_config()
-        .map_err(|e| anyhow::anyhow!("读取配置文件失败: {}", e))?;
-
-    let acemcp_config = super::super::acemcp::types::AcemcpConfig {
-        base_url: config.mcp_config.acemcp_base_url,
-        token: config.mcp_config.acemcp_token,
-        batch_size: config.mcp_config.acemcp_batch_size,
-        max_lines_per_blob: config.mcp_config.acemcp_max_lines_per_blob,
-        text_extensions: config.mcp_config.acemcp_text_extensions,
-        exclude_patterns: config.mcp_config.acemcp_exclude_patterns,
-        smart_wait_range: Some((1, 5)),
-        // 代理配置
-        proxy_enabled: config.mcp_config.acemcp_proxy_enabled,
-        proxy_host: config.mcp_config.acemcp_proxy_host,
-        proxy_port: config.mcp_config.acemcp_proxy_port,
-        proxy_type: config.mcp_config.acemcp_proxy_type,
-    };
+    // 获取 acemcp 配置：复用工具内部读取逻辑，避免字段新增/演进导致此处漏填
+    let acemcp_config = super::super::acemcp::mcp::AcemcpTool::get_acemcp_config().await?;
 
     // 检查索引状态
     let initial_state = get_initial_index_state(project_root);

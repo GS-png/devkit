@@ -647,6 +647,123 @@ const speedTestDisabled = computed(() => {
   return !config.value.proxy_host || !config.value.proxy_port
 })
 
+// 测速按钮禁用原因（用于 Tooltip 提示）
+const speedTestDisabledReason = computed(() => {
+  if (!config.value.base_url) {
+    return '请先配置租户地址'
+  }
+  if (!config.value.token) {
+    return '请先配置 ACE Token'
+  }
+  if (speedTestMode.value === 'direct') {
+    return ''
+  }
+  if (!config.value.proxy_host) {
+    return '请先填写代理地址（或使用自动检测）'
+  }
+  if (!config.value.proxy_port) {
+    return '请先填写代理端口'
+  }
+  return ''
+})
+
+function formatSpeedTestTime(ts: string): string {
+  if (!ts) {
+    return '-'
+  }
+  try {
+    return new Date(ts).toLocaleString()
+  }
+  catch {
+    return ts
+  }
+}
+
+function buildSpeedTestReportPayload() {
+  if (!speedTestResult.value) {
+    return null
+  }
+
+  const uploadMaxFiles = projectUploadMode.value === 'sample'
+    ? Math.max(1, Number(projectUploadMaxFiles.value) || 200)
+    : undefined
+
+  return {
+    tool: 'sou',
+    timestamp: speedTestResult.value.timestamp,
+    mode: speedTestResult.value.mode,
+    query: speedTestQuery.value,
+    project: {
+      root: speedTestProjectRoot.value,
+      name: getProjectName(speedTestProjectRoot.value),
+      upload_mode: projectUploadMode.value,
+      upload_max_files: uploadMaxFiles,
+    },
+    proxy: speedTestResult.value.mode === 'direct'
+      ? { enabled: false }
+      : {
+          enabled: true,
+          type: config.value.proxy_type,
+          host: config.value.proxy_host,
+          port: config.value.proxy_port,
+          username: config.value.proxy_username || undefined,
+          password_set: Boolean(config.value.proxy_password),
+        },
+    config: {
+      base_url: config.value.base_url,
+      token_set: Boolean(config.value.token),
+    },
+    result: speedTestResult.value,
+  }
+}
+
+/** 复制测速报告到剪贴板（JSON，不包含 token 与密码） */
+async function copySpeedTestReport() {
+  const report = buildSpeedTestReportPayload()
+  if (!report) {
+    message.warning('暂无测速结果可复制')
+    return
+  }
+
+  try {
+    await navigator.clipboard.writeText(JSON.stringify(report, null, 2))
+    message.success('已复制测速报告（JSON）')
+  }
+  catch (e) {
+    message.error(`复制失败: ${e}`)
+  }
+}
+
+/** 导出测速报告到文件（JSON 下载，不包含 token 与密码） */
+async function downloadSpeedTestReport() {
+  const report = buildSpeedTestReportPayload()
+  if (!report) {
+    message.warning('暂无测速结果可导出')
+    return
+  }
+
+  try {
+    const ts = speedTestResult.value?.timestamp || new Date().toISOString()
+    const safeTs = ts.replace(/[:.]/g, '-').replace('T', '_').replace('Z', '')
+    const filename = `sou-speedtest-${safeTs}.json`
+
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    a.click()
+
+    // 释放 URL，避免内存泄露
+    setTimeout(() => URL.revokeObjectURL(url), 0)
+    message.success(`已导出测速报告: ${filename}`)
+  }
+  catch (e) {
+    message.error(`导出失败: ${e}`)
+  }
+}
+
 /** 计算性能差异百分比 */
 function calcDiff(proxyMs: number | null, directMs: number | null): string {
   if (proxyMs === null || directMs === null) {
@@ -914,16 +1031,23 @@ defineExpose({ saveConfig })
                     <template #icon><div class="i-carbon-search" /></template>
                     自动检测
                   </n-button>
-                  <n-button
-                    secondary
-                    size="small"
-                    :loading="proxyTesting"
-                    :disabled="speedTestDisabled"
-                    @click="runSpeedTest"
-                  >
-                    <template #icon><div class="i-carbon-rocket" /></template>
-                    测速
-                  </n-button>
+                  <n-tooltip :disabled="!speedTestDisabled">
+                    <template #trigger>
+                      <span class="inline-flex">
+                        <n-button
+                          secondary
+                          size="small"
+                          :loading="proxyTesting"
+                          :disabled="speedTestDisabled"
+                          @click="runSpeedTest"
+                        >
+                          <template #icon><div class="i-carbon-rocket" /></template>
+                          测速
+                        </n-button>
+                      </span>
+                    </template>
+                    <span>{{ speedTestDisabledReason || '请完善测速前置条件' }}</span>
+                  </n-tooltip>
                 </div>
 
                 <!-- 检测到的代理列表 -->
@@ -1028,47 +1152,90 @@ defineExpose({ saveConfig })
                   <div v-if="speedTestResult" class="mt-2 p-4 rounded-lg bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-700 border border-slate-200 dark:border-slate-600">
                     <div class="flex items-center justify-between mb-3">
                       <div class="text-sm font-medium">测速结果</div>
-                      <n-tag :type="speedTestResult.success ? 'success' : 'warning'" size="small">
-                        {{ speedTestResult.success ? '测试成功' : '部分失败' }}
-                      </n-tag>
+                      <div class="flex items-center gap-2">
+                        <n-button
+                          size="tiny"
+                          secondary
+                          :loading="proxyTesting"
+                          :disabled="proxyTesting"
+                          @click="runSpeedTest"
+                        >
+                          <template #icon><div class="i-carbon-renew" /></template>
+                          重新测试
+                        </n-button>
+                        <n-button size="tiny" secondary @click="copySpeedTestReport">
+                          <template #icon><div class="i-carbon-copy" /></template>
+                          复制报告
+                        </n-button>
+                        <n-button size="tiny" secondary @click="downloadSpeedTestReport">
+                          <template #icon><div class="i-carbon-download" /></template>
+                          导出报告
+                        </n-button>
+                        <n-tag :type="speedTestResult.success ? 'success' : 'warning'" size="small">
+                          {{ speedTestResult.success ? '测试成功' : '部分失败' }}
+                        </n-tag>
+                      </div>
                     </div>
 
-                    <!-- 指标表格 -->
-                    <div class="space-y-2">
-                      <div
-                        v-for="(metric, idx) in speedTestResult.metrics"
-                        :key="idx"
-                        class="flex items-center justify-between p-2 rounded bg-white dark:bg-slate-900"
-                      >
-                        <div class="flex items-center gap-2">
-                          <span class="text-base">{{ metric.name.split(' ')[0] }}</span>
-                          <span class="text-sm">{{ metric.name.split(' ').slice(1).join(' ') }}</span>
-                        </div>
-                        <div class="flex items-center gap-4 text-sm">
-                          <div v-if="speedTestResult.mode !== 'direct'" class="text-center">
-                            <div class="text-xs text-gray-500">代理</div>
-                            <div :class="metric.proxy_time_ms !== null ? 'text-blue-600 font-medium' : 'text-gray-400'">
-                              {{ metric.proxy_time_ms !== null ? `${metric.proxy_time_ms}ms` : '-' }}
-                            </div>
-                          </div>
-                          <div v-if="speedTestResult.mode !== 'proxy'" class="text-center">
-                            <div class="text-xs text-gray-500">直连</div>
-                            <div :class="metric.direct_time_ms !== null ? 'text-orange-600 font-medium' : 'text-gray-400'">
-                              {{ metric.direct_time_ms !== null ? `${metric.direct_time_ms}ms` : '-' }}
-                            </div>
-                          </div>
-                          <div v-if="speedTestResult.mode === 'compare'" class="text-center min-w-[50px]">
-                            <div class="text-xs text-gray-500">差异</div>
-                            <div
-                              class="font-medium"
-                              :style="{ color: getDiffColor(metric.proxy_time_ms, metric.direct_time_ms) }"
-                            >
-                              {{ calcDiff(metric.proxy_time_ms, metric.direct_time_ms) }}
-                            </div>
-                          </div>
+                    <!-- 测试环境信息 -->
+                    <div class="mb-3 p-2 rounded bg-white/60 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-700">
+                      <div class="text-xs text-gray-600 dark:text-gray-300 space-y-1">
+                        <div>时间：{{ formatSpeedTestTime(speedTestResult.timestamp) }}</div>
+                        <div>项目：<code class="code-inline">{{ speedTestProjectRoot || '（未选择）' }}</code></div>
+                        <div v-if="speedTestResult.mode !== 'direct'">
+                          代理：{{ config.proxy_type.toUpperCase() }} {{ config.proxy_host }}:{{ config.proxy_port }}
+                          <span v-if="config.proxy_username">（用户：{{ config.proxy_username }}）</span>
                         </div>
                       </div>
                     </div>
+
+                    <!-- 指标卡片 -->
+                    <n-grid :x-gap="12" :y-gap="12" :cols="12">
+                      <n-grid-item
+                        v-for="(metric, idx) in speedTestResult.metrics"
+                        :key="idx"
+                        :span="6"
+                      >
+                        <div class="p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                          <div class="flex items-center justify-between gap-2">
+                            <div class="text-sm font-medium">
+                              {{ metric.name }}
+                            </div>
+                            <n-tag :type="metric.success ? 'success' : 'error'" size="small">
+                              {{ metric.success ? 'OK' : '失败' }}
+                            </n-tag>
+                          </div>
+
+                          <div class="mt-2 flex items-end justify-between gap-3">
+                            <div v-if="speedTestResult.mode !== 'direct'" class="min-w-[80px]">
+                              <div class="text-xs text-gray-500">代理</div>
+                              <div :class="metric.proxy_time_ms !== null ? 'text-blue-600 font-semibold' : 'text-gray-400'">
+                                {{ metric.proxy_time_ms !== null ? `${metric.proxy_time_ms}ms` : '-' }}
+                              </div>
+                            </div>
+                            <div v-if="speedTestResult.mode !== 'proxy'" class="min-w-[80px] text-right">
+                              <div class="text-xs text-gray-500">直连</div>
+                              <div :class="metric.direct_time_ms !== null ? 'text-orange-600 font-semibold' : 'text-gray-400'">
+                                {{ metric.direct_time_ms !== null ? `${metric.direct_time_ms}ms` : '-' }}
+                              </div>
+                            </div>
+                            <div v-if="speedTestResult.mode === 'compare'" class="min-w-[80px] text-right">
+                              <div class="text-xs text-gray-500">差异</div>
+                              <div
+                                class="font-semibold"
+                                :style="{ color: getDiffColor(metric.proxy_time_ms, metric.direct_time_ms) }"
+                              >
+                                {{ calcDiff(metric.proxy_time_ms, metric.direct_time_ms) }}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div v-if="metric.error" class="mt-2 text-xs text-red-500 break-words">
+                            {{ metric.error }}
+                          </div>
+                        </div>
+                      </n-grid-item>
+                    </n-grid>
 
                     <!-- 推荐建议 -->
                     <div class="mt-3 pt-3 border-t border-slate-200 dark:border-slate-600">
