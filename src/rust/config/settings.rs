@@ -117,8 +117,14 @@ pub struct McpConfig {
     pub acemcp_text_extensions: Option<Vec<String>>, // acemcp文件扩展名
     pub acemcp_exclude_patterns: Option<Vec<String>>, // acemcp排除模式
     pub acemcp_watch_debounce_ms: Option<u64>, // 文件监听防抖延迟（毫秒），默认 180000 (3分钟)
+    // Sou 代理配置
+    pub acemcp_proxy_enabled: Option<bool>, // 代理启用开关
+    pub acemcp_proxy_host: Option<String>, // 代理主机地址
+    pub acemcp_proxy_port: Option<u16>, // 代理端口
+    pub acemcp_proxy_type: Option<String>, // 代理类型: "http" | "socks5"
     pub context7_api_key: Option<String>, // Context7 API密钥 (可选，免费使用时可为空)
 }
+
 
 // 自定义prompt结构
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -284,6 +290,11 @@ pub fn default_mcp_config() -> McpConfig {
         acemcp_text_extensions: None,
         acemcp_exclude_patterns: None,
         acemcp_watch_debounce_ms: None, // 使用默认值 180000ms (3分钟)
+        // 代理配置默认值
+        acemcp_proxy_enabled: None,
+        acemcp_proxy_host: None,
+        acemcp_proxy_port: None,
+        acemcp_proxy_type: None,
         context7_api_key: None,
     }
 }

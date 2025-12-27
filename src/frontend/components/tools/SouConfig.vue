@@ -34,9 +34,47 @@ const config = ref({
   text_extensions: [] as string[],
   exclude_patterns: [] as string[],
   watch_debounce_minutes: 3, // 文件监听防抖延迟（分钟），默认 3 分钟
+  // 代理配置
+  proxy_enabled: false,
+  proxy_host: '127.0.0.1',
+  proxy_port: 7890,
+  proxy_type: 'http' as 'http' | 'socks5',
 })
 
 const loadingConfig = ref(false)
+
+// 代理检测和测速状态
+interface DetectedProxy {
+  host: string
+  port: number
+  proxy_type: string
+  response_time_ms: number | null
+}
+
+interface SpeedTestMetric {
+  name: string
+  metric_type: string
+  proxy_time_ms: number | null
+  direct_time_ms: number | null
+  success: boolean
+  error: string | null
+}
+
+interface SpeedTestResult {
+  mode: string
+  proxy_info: DetectedProxy | null
+  metrics: SpeedTestMetric[]
+  timestamp: string
+  recommendation: string
+  success: boolean
+}
+
+const proxyDetecting = ref(false)
+const detectedProxies = ref<DetectedProxy[]>([])
+const proxyTesting = ref(false)
+const speedTestResult = ref<SpeedTestResult | null>(null)
+const speedTestMode = ref<'proxy' | 'direct' | 'compare'>('compare')
+const speedTestQuery = ref('代码搜索测试')
 
 // 调试状态
 const debugProjectRoot = ref('')
@@ -79,7 +117,12 @@ async function loadAcemcpConfig() {
       max_lines_per_blob: res.max_lines_per_blob,
       text_extensions: res.text_extensions,
       exclude_patterns: res.exclude_patterns,
-      watch_debounce_minutes: Math.round((res.watch_debounce_ms || 180000) / 60000), // 毫秒转分钟
+      watch_debounce_minutes: Math.round((res.watch_debounce_ms || 180000) / 60000),
+      // 代理配置
+      proxy_enabled: res.proxy_enabled || false,
+      proxy_host: res.proxy_host || '127.0.0.1',
+      proxy_port: res.proxy_port || 7890,
+      proxy_type: res.proxy_type || 'http',
     }
 
     // 确保选项存在
@@ -113,7 +156,12 @@ async function saveConfig() {
         maxLinesPerBlob: config.value.max_lines_per_blob,
         textExtensions: config.value.text_extensions,
         excludePatterns: config.value.exclude_patterns,
-        watchDebounceMs: config.value.watch_debounce_minutes * 60000, // 分钟转毫秒
+        watchDebounceMs: config.value.watch_debounce_minutes * 60000,
+        // 代理配置
+        proxyEnabled: config.value.proxy_enabled,
+        proxyHost: config.value.proxy_host,
+        proxyPort: config.value.proxy_port,
+        proxyType: config.value.proxy_type,
       },
     })
     message.success('配置已保存')
@@ -208,6 +256,95 @@ async function toggleAutoIndex() {
   }
 }
 
+// --- 代理检测和测速函数 ---
+
+/** 自动检测本地代理 */
+async function detectProxy() {
+  proxyDetecting.value = true
+  detectedProxies.value = []
+  try {
+    const proxies = await invoke('detect_acemcp_proxy') as DetectedProxy[]
+    detectedProxies.value = proxies
+    
+    if (proxies.length === 0) {
+      message.warning('未检测到本地代理，请手动输入')
+    } else if (proxies.length === 1) {
+      // 自动填充
+      config.value.proxy_host = proxies[0].host
+      config.value.proxy_port = proxies[0].port
+      config.value.proxy_type = proxies[0].proxy_type as 'http' | 'socks5'
+      message.success(`已检测到代理 ${proxies[0].host}:${proxies[0].port}，建议测速验证`)
+    } else {
+      // 多个代理，选择响应最快的
+      config.value.proxy_host = proxies[0].host
+      config.value.proxy_port = proxies[0].port
+      config.value.proxy_type = proxies[0].proxy_type as 'http' | 'socks5'
+      message.success(`检测到 ${proxies.length} 个代理，已选择最快的 ${proxies[0].host}:${proxies[0].port}`)
+    }
+  } catch (err) {
+    message.error(`代理检测失败: ${err}`)
+  } finally {
+    proxyDetecting.value = false
+  }
+}
+
+/** 代理测速 */
+async function runSpeedTest() {
+  // 前置条件检查
+  if (!config.value.base_url) {
+    message.error('请先配置租户地址')
+    return
+  }
+  if (!config.value.token) {
+    message.error('请先配置 ACE Token')
+    return
+  }
+  
+  proxyTesting.value = true
+  speedTestResult.value = null
+  
+  try {
+    const result = await invoke('test_acemcp_proxy_speed', {
+      testMode: speedTestMode.value,
+      proxyHost: config.value.proxy_host,
+      proxyPort: config.value.proxy_port,
+      proxyType: config.value.proxy_type,
+      testQuery: speedTestQuery.value,
+      projectRootPath: '', // 可以留空，测速主要测试网络连接
+    }) as SpeedTestResult
+    
+    speedTestResult.value = result
+    
+    if (result.success) {
+      message.success('测速完成')
+    } else {
+      message.warning('测速完成，部分测试失败')
+    }
+  } catch (err) {
+    message.error(`测速失败: ${err}`)
+  } finally {
+    proxyTesting.value = false
+  }
+}
+
+/** 计算性能差异百分比 */
+function calcDiff(proxyMs: number | null, directMs: number | null): string {
+  if (proxyMs === null || directMs === null) return '-'
+  if (directMs === 0) return '-'
+  const diff = ((directMs - proxyMs) / directMs * 100).toFixed(0)
+  if (Number(diff) > 0) return `⬇️${diff}%`
+  if (Number(diff) < 0) return `⬆️${Math.abs(Number(diff))}%`
+  return '0%'
+}
+
+/** 获取差异颜色 */
+function getDiffColor(proxyMs: number | null, directMs: number | null): string {
+  if (proxyMs === null || directMs === null) return 'inherit'
+  if (proxyMs < directMs) return '#22c55e' // 绿色 - 提升
+  if (proxyMs > directMs) return '#ef4444' // 红色 - 下降
+  return 'inherit'
+}
+
 // 监听扩展名变化，自动规范化
 watch(() => config.value.text_extensions, (list) => {
   const norm = Array.from(new Set((list || []).map(s => {
@@ -275,6 +412,157 @@ defineExpose({ saveConfig })
                   </n-form-item>
                 </n-grid-item>
               </n-grid>
+            </ConfigSection>
+
+            <!-- 代理设置 -->
+            <ConfigSection title="代理设置" description="配置 HTTP/HTTPS 代理以优化网络连接">
+              <n-space vertical size="medium">
+                <!-- 启用代理开关 -->
+                <div class="flex items-center justify-between py-2 px-3 rounded-lg bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-700">
+                  <div class="flex items-center gap-3">
+                    <div class="i-carbon-network-3 text-lg text-blue-500" />
+                    <div>
+                      <div class="font-medium text-sm">启用代理</div>
+                      <div class="text-xs text-gray-500">所有 ACE API 请求将通过代理</div>
+                    </div>
+                  </div>
+                  <n-switch v-model:value="config.proxy_enabled" :round="false" />
+                </div>
+
+                <!-- 代理配置表单 -->
+                <n-grid :x-gap="16" :y-gap="12" :cols="12">
+                  <n-grid-item :span="5">
+                    <n-form-item label="代理地址" size="small">
+                      <n-input 
+                        v-model:value="config.proxy_host" 
+                        placeholder="127.0.0.1"
+                        :disabled="!config.proxy_enabled"
+                        clearable
+                      />
+                    </n-form-item>
+                  </n-grid-item>
+                  <n-grid-item :span="3">
+                    <n-form-item label="端口" size="small">
+                      <n-input-number 
+                        v-model:value="config.proxy_port" 
+                        :min="1" 
+                        :max="65535"
+                        :disabled="!config.proxy_enabled"
+                        class="w-full"
+                      />
+                    </n-form-item>
+                  </n-grid-item>
+                  <n-grid-item :span="4">
+                    <n-form-item label="类型" size="small">
+                      <n-select 
+                        v-model:value="config.proxy_type"
+                        :options="[
+                          { label: 'HTTP', value: 'http' },
+                          { label: 'SOCKS5', value: 'socks5' },
+                        ]"
+                        :disabled="!config.proxy_enabled"
+                      />
+                    </n-form-item>
+                  </n-grid-item>
+                </n-grid>
+
+                <!-- 操作按钮 -->
+                <div class="flex gap-3">
+                  <n-button 
+                    secondary 
+                    size="small"
+                    :loading="proxyDetecting"
+                    :disabled="!config.proxy_enabled"
+                    @click="detectProxy"
+                  >
+                    <template #icon><div class="i-carbon-search" /></template>
+                    自动检测
+                  </n-button>
+                  <n-button 
+                    secondary 
+                    size="small"
+                    :loading="proxyTesting"
+                    :disabled="!config.proxy_enabled || !config.base_url || !config.token"
+                    @click="runSpeedTest"
+                  >
+                    <template #icon><div class="i-carbon-rocket" /></template>
+                    测速
+                  </n-button>
+                </div>
+
+                <!-- 检测到的代理列表 -->
+                <n-collapse-transition :show="detectedProxies.length > 1">
+                  <div class="mt-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                    <div class="text-xs font-medium text-blue-600 dark:text-blue-400 mb-2">检测到 {{ detectedProxies.length }} 个可用代理</div>
+                    <div class="flex flex-wrap gap-2">
+                      <n-tag 
+                        v-for="(p, idx) in detectedProxies" 
+                        :key="idx"
+                        :type="config.proxy_port === p.port ? 'success' : 'default'"
+                        size="small"
+                        class="cursor-pointer"
+                        @click="() => { config.proxy_host = p.host; config.proxy_port = p.port; config.proxy_type = p.proxy_type as 'http' | 'socks5' }"
+                      >
+                        {{ p.host }}:{{ p.port }} ({{ p.response_time_ms }}ms)
+                      </n-tag>
+                    </div>
+                  </div>
+                </n-collapse-transition>
+
+                <!-- 测速结果 -->
+                <n-collapse-transition :show="speedTestResult !== null">
+                  <div v-if="speedTestResult" class="mt-2 p-4 rounded-lg bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-700 border border-slate-200 dark:border-slate-600">
+                    <div class="flex items-center justify-between mb-3">
+                      <div class="text-sm font-medium">测速结果</div>
+                      <n-tag :type="speedTestResult.success ? 'success' : 'warning'" size="small">
+                        {{ speedTestResult.success ? '测试成功' : '部分失败' }}
+                      </n-tag>
+                    </div>
+                    
+                    <!-- 指标表格 -->
+                    <div class="space-y-2">
+                      <div 
+                        v-for="(metric, idx) in speedTestResult.metrics" 
+                        :key="idx"
+                        class="flex items-center justify-between p-2 rounded bg-white dark:bg-slate-900"
+                      >
+                        <div class="flex items-center gap-2">
+                          <span class="text-base">{{ metric.name.split(' ')[0] }}</span>
+                          <span class="text-sm">{{ metric.name.split(' ').slice(1).join(' ') }}</span>
+                        </div>
+                        <div class="flex items-center gap-4 text-sm">
+                          <div v-if="speedTestResult.mode !== 'direct'" class="text-center">
+                            <div class="text-xs text-gray-500">代理</div>
+                            <div :class="metric.proxy_time_ms !== null ? 'text-blue-600 font-medium' : 'text-gray-400'">
+                              {{ metric.proxy_time_ms !== null ? `${metric.proxy_time_ms}ms` : '-' }}
+                            </div>
+                          </div>
+                          <div v-if="speedTestResult.mode !== 'proxy'" class="text-center">
+                            <div class="text-xs text-gray-500">直连</div>
+                            <div :class="metric.direct_time_ms !== null ? 'text-orange-600 font-medium' : 'text-gray-400'">
+                              {{ metric.direct_time_ms !== null ? `${metric.direct_time_ms}ms` : '-' }}
+                            </div>
+                          </div>
+                          <div v-if="speedTestResult.mode === 'compare'" class="text-center min-w-[50px]">
+                            <div class="text-xs text-gray-500">差异</div>
+                            <div 
+                              class="font-medium"
+                              :style="{ color: getDiffColor(metric.proxy_time_ms, metric.direct_time_ms) }"
+                            >
+                              {{ calcDiff(metric.proxy_time_ms, metric.direct_time_ms) }}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 推荐建议 -->
+                    <div class="mt-3 pt-3 border-t border-slate-200 dark:border-slate-600">
+                      <div class="text-sm">{{ speedTestResult.recommendation }}</div>
+                    </div>
+                  </div>
+                </n-collapse-transition>
+              </n-space>
             </ConfigSection>
             
             <div class="flex justify-end">

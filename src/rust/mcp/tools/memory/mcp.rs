@@ -97,6 +97,11 @@ async fn try_trigger_background_index(project_root: &str) -> Result<()> {
         text_extensions: config.mcp_config.acemcp_text_extensions,
         exclude_patterns: config.mcp_config.acemcp_exclude_patterns,
         smart_wait_range: Some((1, 5)),
+        // 代理配置
+        proxy_enabled: config.mcp_config.acemcp_proxy_enabled,
+        proxy_host: config.mcp_config.acemcp_proxy_host,
+        proxy_port: config.mcp_config.acemcp_proxy_port,
+        proxy_type: config.mcp_config.acemcp_proxy_type,
     };
 
     // 检查索引状态

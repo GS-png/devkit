@@ -1,8 +1,9 @@
 use tauri::{AppHandle, State};
 
 use crate::config::{AppState, save_config};
+use crate::network::proxy::{ProxyDetector, ProxyInfo, ProxyType};
 use super::AcemcpTool;
-use super::types::{AcemcpRequest, ProjectIndexStatus, ProjectsIndexStatus, ProjectFilesStatus};
+use super::types::{AcemcpRequest, ProjectIndexStatus, ProjectsIndexStatus, ProjectFilesStatus, DetectedProxy, ProxySpeedTestResult, SpeedTestMetric};
 use reqwest;
 
 #[derive(Debug, serde::Deserialize)]
@@ -21,7 +22,17 @@ pub struct SaveAcemcpConfigArgs {
     pub exclude_patterns: Vec<String>,
     #[serde(alias = "watchDebounceMs", alias = "watch_debounce_ms")]
     pub watch_debounce_ms: Option<u64>, // 文件监听防抖延迟（毫秒）
+    // 代理配置
+    #[serde(alias = "proxyEnabled", alias = "proxy_enabled")]
+    pub proxy_enabled: Option<bool>,
+    #[serde(alias = "proxyHost", alias = "proxy_host")]
+    pub proxy_host: Option<String>,
+    #[serde(alias = "proxyPort", alias = "proxy_port")]
+    pub proxy_port: Option<u16>,
+    #[serde(alias = "proxyType", alias = "proxy_type")]
+    pub proxy_type: Option<String>,
 }
+
 
 #[tauri::command]
 pub async fn save_acemcp_config(
@@ -54,6 +65,11 @@ pub async fn save_acemcp_config(
         config.mcp_config.acemcp_text_extensions = Some(args.text_extensions.clone());
         config.mcp_config.acemcp_exclude_patterns = Some(args.exclude_patterns.clone());
         config.mcp_config.acemcp_watch_debounce_ms = args.watch_debounce_ms;
+        // 保存代理配置
+        config.mcp_config.acemcp_proxy_enabled = args.proxy_enabled;
+        config.mcp_config.acemcp_proxy_host = args.proxy_host.clone();
+        config.mcp_config.acemcp_proxy_port = args.proxy_port;
+        config.mcp_config.acemcp_proxy_type = args.proxy_type.clone();
     }
 
     save_config(&state, &app)
@@ -275,6 +291,11 @@ pub struct AcemcpConfigResponse {
     pub text_extensions: Vec<String>,
     pub exclude_patterns: Vec<String>,
     pub watch_debounce_ms: u64, // 文件监听防抖延迟（毫秒），默认 180000 (3分钟)
+    // 代理配置
+    pub proxy_enabled: bool,
+    pub proxy_host: String,
+    pub proxy_port: u16,
+    pub proxy_type: String,
 }
 
 #[tauri::command]
@@ -307,6 +328,11 @@ pub async fn get_acemcp_config(state: State<'_, AppState>) -> Result<AcemcpConfi
             vec!["node_modules".to_string(), ".git".to_string(), "target".to_string(), "dist".to_string()]
         }),
         watch_debounce_ms: config.mcp_config.acemcp_watch_debounce_ms.unwrap_or(180_000),
+        // 代理配置
+        proxy_enabled: config.mcp_config.acemcp_proxy_enabled.unwrap_or(false),
+        proxy_host: config.mcp_config.acemcp_proxy_host.clone().unwrap_or_else(|| "127.0.0.1".to_string()),
+        proxy_port: config.mcp_config.acemcp_proxy_port.unwrap_or(7890),
+        proxy_type: config.mcp_config.acemcp_proxy_type.clone().unwrap_or_else(|| "http".to_string()),
     })
 }
 
@@ -633,3 +659,310 @@ pub fn check_directory_exists(directory_path: String) -> Result<bool, String> {
     Ok(normalized.exists() && normalized.is_dir())
 }
 
+// ============ 代理检测和测速命令 ============
+
+/// 自动检测本地可用的代理
+/// 返回所有检测到的可用代理列表
+#[tauri::command]
+pub async fn detect_acemcp_proxy() -> Result<Vec<DetectedProxy>, String> {
+    log::info!("🔍 开始检测本地代理...");
+    
+    // 常用代理端口列表
+    let ports_to_check: Vec<(u16, &str)> = vec![
+        (7890, "http"),   // Clash 混合端口
+        (7891, "http"),   // Clash HTTP 端口
+        (10808, "http"),  // V2Ray HTTP 端口
+        (10809, "socks5"), // V2Ray SOCKS5 端口
+        (1080, "socks5"), // 通用 SOCKS5 端口
+        (8080, "http"),   // 通用 HTTP 代理端口
+    ];
+    
+    let mut detected_proxies: Vec<DetectedProxy> = Vec::new();
+    
+    for (port, proxy_type_str) in ports_to_check {
+        let proxy_type = if proxy_type_str == "socks5" {
+            ProxyType::Socks5
+        } else {
+            ProxyType::Http
+        };
+        
+        let proxy_info = ProxyInfo::new(proxy_type, "127.0.0.1".to_string(), port);
+        
+        // 记录开始时间
+        let start = std::time::Instant::now();
+        
+        // 检测代理是否可用
+        if ProxyDetector::check_proxy(&proxy_info).await {
+            let response_time = start.elapsed().as_millis() as u64;
+            log::info!("✅ 检测到可用代理: 127.0.0.1:{} ({}), 响应时间: {}ms", port, proxy_type_str, response_time);
+            
+            detected_proxies.push(DetectedProxy {
+                host: "127.0.0.1".to_string(),
+                port,
+                proxy_type: proxy_type_str.to_string(),
+                response_time_ms: Some(response_time),
+            });
+        }
+    }
+    
+    // 按响应时间排序
+    detected_proxies.sort_by(|a, b| {
+        a.response_time_ms.unwrap_or(u64::MAX).cmp(&b.response_time_ms.unwrap_or(u64::MAX))
+    });
+    
+    log::info!("🔍 代理检测完成，找到 {} 个可用代理", detected_proxies.len());
+    Ok(detected_proxies)
+}
+
+/// 代理测速命令
+/// 测试代理和直连模式下的网络延迟和搜索性能
+#[tauri::command]
+pub async fn test_acemcp_proxy_speed(
+    test_mode: String,        // "proxy" | "direct" | "compare"
+    proxy_host: Option<String>,
+    proxy_port: Option<u16>,
+    proxy_type: Option<String>,
+    test_query: String,
+    project_root_path: String,
+    state: State<'_, AppState>,
+) -> Result<ProxySpeedTestResult, String> {
+    log::info!("🚀 开始代理测速: mode={}, query={}", test_mode, test_query);
+    
+    // 获取配置
+    let (base_url, token) = {
+        let config = state.config.lock().map_err(|e| format!("获取配置失败: {}", e))?;
+        (
+            config.mcp_config.acemcp_base_url.clone().ok_or("未配置 ACE Token")?,
+            config.mcp_config.acemcp_token.clone().ok_or("未配置租户地址")?,
+        )
+    };
+    
+    let mut metrics: Vec<SpeedTestMetric> = Vec::new();
+    let test_proxy = test_mode == "proxy" || test_mode == "compare";
+    let test_direct = test_mode == "direct" || test_mode == "compare";
+    
+    // 构建代理信息
+    let proxy_info = if test_proxy {
+        let host = proxy_host.clone().unwrap_or_else(|| "127.0.0.1".to_string());
+        let port = proxy_port.unwrap_or(7890);
+        let p_type = proxy_type.clone().unwrap_or_else(|| "http".to_string());
+        Some(DetectedProxy {
+            host,
+            port,
+            proxy_type: p_type,
+            response_time_ms: None,
+        })
+    } else {
+        None
+    };
+    
+    // 1. Ping 测试 - 测量到 ACE 服务器的网络延迟
+    let health_url = format!("{}/health", base_url);
+    let mut ping_metric = SpeedTestMetric {
+        name: "🌐 网络延迟".to_string(),
+        metric_type: "ping".to_string(),
+        proxy_time_ms: None,
+        direct_time_ms: None,
+        success: true,
+        error: None,
+    };
+    
+    // 代理模式 Ping
+    if test_proxy {
+        if let Some(ref pi) = proxy_info {
+            let p_type = if pi.proxy_type == "socks5" { ProxyType::Socks5 } else { ProxyType::Http };
+            let proxy = ProxyInfo::new(p_type, pi.host.clone(), pi.port);
+            match ping_endpoint(&health_url, &token, Some(&proxy)).await {
+                Ok(ms) => ping_metric.proxy_time_ms = Some(ms),
+                Err(e) => {
+                    ping_metric.success = false;
+                    ping_metric.error = Some(format!("代理测试失败: {}", e));
+                }
+            }
+        }
+    }
+    
+    // 直连模式 Ping
+    if test_direct {
+        match ping_endpoint(&health_url, &token, None).await {
+            Ok(ms) => ping_metric.direct_time_ms = Some(ms),
+            Err(e) => {
+                if ping_metric.error.is_none() {
+                    ping_metric.success = false;
+                    ping_metric.error = Some(format!("直连测试失败: {}", e));
+                }
+            }
+        }
+    }
+    metrics.push(ping_metric);
+    
+    // 2. 语义搜索测试
+    let mut search_metric = SpeedTestMetric {
+        name: "🔍 语义搜索".to_string(),
+        metric_type: "search".to_string(),
+        proxy_time_ms: None,
+        direct_time_ms: None,
+        success: true,
+        error: None,
+    };
+    
+    let search_url = format!("{}/agents/codebase-retrieval", base_url);
+    let search_payload = serde_json::json!({
+        "information_request": test_query,
+        "blobs": {"checkpoint_id": null, "added_blobs": [], "deleted_blobs": []},
+        "dialog": [],
+        "max_output_length": 100,
+        "disable_codebase_retrieval": false,
+        "enable_commit_retrieval": false,
+    });
+    
+    // 代理模式搜索
+    if test_proxy {
+        if let Some(ref pi) = proxy_info {
+            let p_type = if pi.proxy_type == "socks5" { ProxyType::Socks5 } else { ProxyType::Http };
+            let proxy = ProxyInfo::new(p_type, pi.host.clone(), pi.port);
+            match search_endpoint(&search_url, &token, &search_payload, Some(&proxy)).await {
+                Ok(ms) => search_metric.proxy_time_ms = Some(ms),
+                Err(e) => {
+                    search_metric.success = false;
+                    search_metric.error = Some(format!("代理搜索失败: {}", e));
+                }
+            }
+        }
+    }
+    
+    // 直连模式搜索
+    if test_direct {
+        match search_endpoint(&search_url, &token, &search_payload, None).await {
+            Ok(ms) => search_metric.direct_time_ms = Some(ms),
+            Err(e) => {
+                if search_metric.error.is_none() {
+                    search_metric.success = false;
+                    search_metric.error = Some(format!("直连搜索失败: {}", e));
+                }
+            }
+        }
+    }
+    metrics.push(search_metric);
+    
+    // 生成推荐建议
+    let recommendation = generate_recommendation(&metrics, &test_mode);
+    let all_success = metrics.iter().all(|m| m.success);
+    
+    let result = ProxySpeedTestResult {
+        mode: test_mode,
+        proxy_info,
+        metrics,
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        recommendation,
+        success: all_success,
+    };
+    
+    log::info!("🚀 代理测速完成: success={}", all_success);
+    Ok(result)
+}
+
+/// Ping 测试辅助函数
+async fn ping_endpoint(url: &str, token: &str, proxy: Option<&ProxyInfo>) -> Result<u64, String> {
+    let mut client_builder = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10));
+    
+    if let Some(p) = proxy {
+        let proxy_url = p.to_url();
+        let reqwest_proxy = reqwest::Proxy::all(&proxy_url)
+            .map_err(|e| format!("创建代理失败: {}", e))?;
+        client_builder = client_builder.proxy(reqwest_proxy);
+    }
+    
+    let client = client_builder.build().map_err(|e| format!("构建客户端失败: {}", e))?;
+    
+    let start = std::time::Instant::now();
+    let response = client
+        .head(url)
+        .header(reqwest::header::AUTHORIZATION, format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("请求失败: {}", e))?;
+    
+    let elapsed = start.elapsed().as_millis() as u64;
+    
+    if response.status().is_success() || response.status().as_u16() == 404 {
+        // 404 也算成功，因为只是测试连通性
+        Ok(elapsed)
+    } else {
+        Err(format!("HTTP {}", response.status()))
+    }
+}
+
+/// 搜索测试辅助函数
+async fn search_endpoint(url: &str, token: &str, payload: &serde_json::Value, proxy: Option<&ProxyInfo>) -> Result<u64, String> {
+    let mut client_builder = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30));
+    
+    if let Some(p) = proxy {
+        let proxy_url = p.to_url();
+        let reqwest_proxy = reqwest::Proxy::all(&proxy_url)
+            .map_err(|e| format!("创建代理失败: {}", e))?;
+        client_builder = client_builder.proxy(reqwest_proxy);
+    }
+    
+    let client = client_builder.build().map_err(|e| format!("构建客户端失败: {}", e))?;
+    
+    let start = std::time::Instant::now();
+    let response = client
+        .post(url)
+        .header(reqwest::header::AUTHORIZATION, format!("Bearer {}", token))
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .json(payload)
+        .send()
+        .await
+        .map_err(|e| format!("请求失败: {}", e))?;
+    
+    let elapsed = start.elapsed().as_millis() as u64;
+    
+    if response.status().is_success() {
+        Ok(elapsed)
+    } else {
+        Err(format!("HTTP {}", response.status()))
+    }
+}
+
+/// 生成推荐建议
+fn generate_recommendation(metrics: &[SpeedTestMetric], mode: &str) -> String {
+    if mode != "compare" {
+        return "单模式测试完成".to_string();
+    }
+    
+    let mut proxy_total: u64 = 0;
+    let mut direct_total: u64 = 0;
+    let mut proxy_count = 0;
+    let mut direct_count = 0;
+    
+    for m in metrics {
+        if let Some(pt) = m.proxy_time_ms {
+            proxy_total += pt;
+            proxy_count += 1;
+        }
+        if let Some(dt) = m.direct_time_ms {
+            direct_total += dt;
+            direct_count += 1;
+        }
+    }
+    
+    if proxy_count == 0 || direct_count == 0 {
+        return "无法对比，部分测试失败".to_string();
+    }
+    
+    let proxy_avg = proxy_total / proxy_count as u64;
+    let direct_avg = direct_total / direct_count as u64;
+    
+    if proxy_avg < direct_avg {
+        let improvement = ((direct_avg - proxy_avg) as f64 / direct_avg as f64 * 100.0) as u32;
+        format!("🟢 建议启用代理，性能提升约 {}%", improvement)
+    } else if direct_avg < proxy_avg {
+        let degradation = ((proxy_avg - direct_avg) as f64 / proxy_avg as f64 * 100.0) as u32;
+        format!("🔴 建议直连，代理性能下降约 {}%", degradation)
+    } else {
+        "🟡 代理与直连性能相当".to_string()
+    }
+}

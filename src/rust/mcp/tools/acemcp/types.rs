@@ -30,7 +30,17 @@ pub struct AcemcpConfig {
     /// 当检测到索引正在进行时，随机等待 [min, max] 秒后再执行搜索
     /// 默认值：Some((1, 5))，设为 None 则禁用智能等待
     pub smart_wait_range: Option<(u64, u64)>,
+    // 代理配置
+    /// 是否启用代理
+    pub proxy_enabled: Option<bool>,
+    /// 代理主机地址
+    pub proxy_host: Option<String>,
+    /// 代理端口
+    pub proxy_port: Option<u16>,
+    /// 代理类型: "http" | "socks5"
+    pub proxy_type: Option<String>,
 }
+
 
 /// 索引状态枚举
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -124,4 +134,53 @@ pub struct ProjectFilesStatus {
     pub project_root: String,
     /// 文件状态列表
     pub files: Vec<FileIndexStatus>,
+}
+
+// ============ 代理测速相关类型 ============
+
+/// 检测到的代理信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetectedProxy {
+    /// 代理主机
+    pub host: String,
+    /// 代理端口
+    pub port: u16,
+    /// 代理类型: "http" | "socks5"
+    pub proxy_type: String,
+    /// 响应时间（毫秒），用于排序
+    pub response_time_ms: Option<u64>,
+}
+
+/// 代理测速结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProxySpeedTestResult {
+    /// 测试模式: "proxy" | "direct" | "compare"
+    pub mode: String,
+    /// 代理配置信息（仅代理模式有效）
+    pub proxy_info: Option<DetectedProxy>,
+    /// 测试指标列表
+    pub metrics: Vec<SpeedTestMetric>,
+    /// 测试时间戳
+    pub timestamp: String,
+    /// 总体推荐建议
+    pub recommendation: String,
+    /// 是否全部测试成功
+    pub success: bool,
+}
+
+/// 单项测试指标
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpeedTestMetric {
+    /// 指标名称（如 "网络延迟"、"单文件上传"、"语义搜索"）
+    pub name: String,
+    /// 指标类型: "ping" | "upload_single" | "search"
+    pub metric_type: String,
+    /// 代理模式耗时（毫秒）
+    pub proxy_time_ms: Option<u64>,
+    /// 直连模式耗时（毫秒）
+    pub direct_time_ms: Option<u64>,
+    /// 是否成功
+    pub success: bool,
+    /// 错误信息
+    pub error: Option<String>,
 }

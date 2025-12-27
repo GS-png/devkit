@@ -28,6 +28,7 @@ use super::types::{
 };
 use crate::log_debug;
 use crate::log_important;
+use crate::network::proxy::{ProxyInfo, ProxyType};
 
 /// Acemcp工具实现
 pub struct AcemcpTool;
@@ -257,8 +258,14 @@ impl AcemcpTool {
             exclude_patterns: config.mcp_config.acemcp_exclude_patterns,
             // 智能等待默认值：1-5 秒随机等待
             smart_wait_range: Some((1, 5)),
+            // 代理配置
+            proxy_enabled: config.mcp_config.acemcp_proxy_enabled,
+            proxy_host: config.mcp_config.acemcp_proxy_host,
+            proxy_port: config.mcp_config.acemcp_proxy_port,
+            proxy_type: config.mcp_config.acemcp_proxy_type,
         })
     }
+
 
     /// 获取工具定义
     pub fn get_tool_definition() -> Tool {
@@ -922,7 +929,8 @@ pub(crate) async fn update_index(config: &AcemcpConfig, project_root_path: &str)
         new_blobs.len()
     );
 
-    let client = Client::new();
+    // 创建 HTTP 客户端（支持代理）
+    let client = create_acemcp_client(config)?;
 
     // 批量上传新增 blobs
     let mut uploaded_names: Vec<String> = Vec::new();
@@ -1165,7 +1173,8 @@ async fn search_only(config: &AcemcpConfig, project_root_path: &str, query: &str
 
     log_important!(info, "检索载荷大小: {} 字节", payload.to_string().len());
 
-    let client = Client::new();
+    // 创建 HTTP 客户端（支持代理）
+    let client = create_acemcp_client(config)?;
     let value: serde_json::Value = retry_request(|| async {
         let r = client
             .post(&search_url)
@@ -1201,4 +1210,33 @@ async fn search_only(config: &AcemcpConfig, project_root_path: &str, query: &str
         log_important!(info, "搜索成功，返回文本长度: {}", text.len());
         Ok(text)
     }
+}
+
+/// 创建支持代理的 HTTP 客户端
+/// 根据配置决定是否使用代理
+fn create_acemcp_client(config: &AcemcpConfig) -> anyhow::Result<Client> {
+    let mut client_builder = Client::builder()
+        .timeout(Duration::from_secs(60));
+    
+    // 检查是否启用代理
+    if config.proxy_enabled.unwrap_or(false) {
+        let host = config.proxy_host.clone().unwrap_or_else(|| "127.0.0.1".to_string());
+        let port = config.proxy_port.unwrap_or(7890);
+        let proxy_type = config.proxy_type.clone().unwrap_or_else(|| "http".to_string());
+        
+        log_important!(info, "🔧 使用代理: {}://{}:{}", proxy_type, host, port);
+        
+        // 构建代理 URL
+        let proxy_url = format!("{}://{}:{}", proxy_type, host, port);
+        
+        // 使用 Proxy::all() 让所有请求都走代理
+        let reqwest_proxy = reqwest::Proxy::all(&proxy_url)
+            .map_err(|e| anyhow::anyhow!("创建代理失败: {}", e))?;
+        client_builder = client_builder.proxy(reqwest_proxy);
+    } else {
+        log_debug!("使用直连模式（未启用代理）");
+    }
+    
+    client_builder.build()
+        .map_err(|e| anyhow::anyhow!("构建 HTTP 客户端失败: {}", e))
 }
