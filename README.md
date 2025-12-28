@@ -160,7 +160,180 @@
 
 ### 🚀 快速开始
 
-#### 方式一：从源码构建
+#### 方式一：下载预编译二进制文件
+
+<div align="center">
+
+**📦 通用安装方式 - 支持所有平台**
+
+</div>
+
+如果您选择直接下载预编译的可执行文件，请按照以下步骤完成安装和环境配置。
+
+#### 1️⃣ 下载并放置可执行文件
+
+从 [Releases 页面](https://github.com/yuaotian/sanshu/releases) 下载对应平台的压缩包，解压后将可执行文件放置到以下推荐目录：
+
+| 平台 | 推荐安装路径 | 说明 |
+|------|-------------|------|
+| **Windows** | `C:\Program Files\sanshu\` | 需要管理员权限 |
+| **Windows** | `%LOCALAPPDATA%\sanshu\` | 无需管理员权限（推荐） |
+| **Linux** | `~/.local/bin/` | 用户级安装（推荐） |
+| **Linux** | `/usr/local/bin/` | 系统级安装，需要 sudo |
+| **macOS** | `~/.local/bin/` | 用户级安装（推荐） |
+| **macOS** | `/usr/local/bin/` | 系统级安装，需要 sudo |
+
+#### 2️⃣ 配置环境变量
+
+将可执行文件所在目录添加到系统 PATH 环境变量中：
+
+<details>
+<summary>🪟 Windows 配置方法</summary>
+
+**方法一：通过系统设置（图形界面）**
+
+1. 按 `Win + R`，输入 `sysdm.cpl`，回车
+2. 点击「高级」选项卡 → 「环境变量」
+3. 在「用户变量」或「系统变量」中找到 `Path`，点击「编辑」
+4. 点击「新建」，添加可执行文件所在目录（如 `C:\Program Files\sanshu\`）
+5. 点击「确定」保存，**重启终端**使配置生效
+
+**方法二：通过 PowerShell 命令**
+
+```powershell
+# 添加到用户级 PATH（无需管理员权限）
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+[Environment]::SetEnvironmentVariable("Path", "$userPath;C:\Program Files\sanshu\", "User")
+
+# 或添加到系统级 PATH（需要管理员权限）
+$machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+[Environment]::SetEnvironmentVariable("Path", "$machinePath;C:\Program Files\sanshu\", "Machine")
+```
+
+> ⚠️ 配置完成后需要**重启终端**或**重新登录**使配置生效。
+
+</details>
+
+<details>
+<summary>🐧 Linux 配置方法</summary>
+
+根据您使用的 Shell，编辑对应的配置文件：
+
+```bash
+# Bash 用户（编辑 ~/.bashrc）
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# Zsh 用户（编辑 ~/.zshrc）
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+# 或编辑 ~/.profile（对所有 Shell 生效）
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.profile
+source ~/.profile
+```
+
+</details>
+
+<details>
+<summary>🍎 macOS 配置方法</summary>
+
+根据您使用的 Shell，编辑对应的配置文件：
+
+```bash
+# Zsh 用户（macOS 默认 Shell，编辑 ~/.zshrc）
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+
+# Bash 用户（编辑 ~/.bash_profile）
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bash_profile
+source ~/.bash_profile
+```
+
+</details>
+
+#### 🍺 macOS 用户的备选方案：Homebrew 安装
+
+macOS 用户也可以选择更便捷的 Homebrew 安装方式：
+
+```bash
+# 1. 添加三术的 Tap 仓库
+brew tap yuaotian/tap
+
+# 2. 安装三术
+brew install sanshu
+
+# 3. 验证安装（可选）
+sanshu --version
+```
+
+**Homebrew 优势**：
+- 🤖 **自动更新**：新版本发布后使用 `brew upgrade sanshu` 即可更新
+- 🔧 **依赖管理**：自动处理所有依赖，无需手动配置 PATH
+- 🛡️ **安全验证**：自动验证二进制文件的完整性
+
+**常用操作**：
+
+```bash
+# 更新三术到最新版本
+brew upgrade sanshu
+
+# 查看已安装版本
+brew info sanshu
+
+# 卸载三术
+brew uninstall sanshu
+
+# 移除 Tap 仓库
+brew untap yuaotian/tap
+```
+
+> **💡 提示**：Homebrew 安装无需手动配置环境变量，安装完成后即可直接使用 `sanshu` 命令。
+
+#### 3️⃣ 验证安装
+
+打开**新的终端窗口**，运行以下命令验证配置是否成功：
+
+```bash
+# 使用中文命令名
+三术 --version
+
+# 或使用拼音命令名
+sanshu --version
+```
+
+如果正确显示版本号（如 `sanshu 0.2.x`），说明环境变量配置成功。
+
+#### ⚠️ 重要说明
+
+> **环境变量配置是 MCP 客户端正常工作的前提条件。**
+>
+> - ✅ **已配置环境变量**：MCP 配置中可直接使用 `"command": "三术"` 或 `"command": "sanshu"`
+> - ❌ **未配置环境变量**：需要在 MCP 配置中使用**完整路径**，例如：
+>   ```json
+>   {
+>     "mcpServers": {
+>       "sanshu": {
+>         "command": "C:\\Program Files\\sanshu\\三术.exe"
+>       }
+>     }
+>   }
+>   ```
+
+#### 方式二：从源码构建
+
+<div align="center">
+
+**🔧 开发者选项 - 需要 Rust/Node.js 环境**
+
+</div>
+
+**适用场景**：
+- 想要修改源码或贡献代码的开发者
+- 需要自定义构建选项的用户
+- 对项目有深入学习兴趣的技术爱好者
+
+**环境要求**：
 
 ```bash
 # 1. 克隆仓库
@@ -173,7 +346,7 @@ pnpm install
 # 3. 构建项目
 pnpm build
 cargo build --release
-0
+
 # 4. 安装 CLI 工具
 # Linux/macOS
 ./install.sh
@@ -296,132 +469,6 @@ pnpm preview
 - 首次构建 Release 版本可能需要较长时间（5-10 分钟），后续增量构建会快很多
 - 如遇到奇怪的编译错误，尝试 `cargo clean` 后重新构建
 - Windows 用户如遇到权限问题，请以管理员身份运行 PowerShell
-
-#### 方式二：通过 Homebrew 安装 (macOS)
-
-```bash
-# 添加 Tap
-brew tap yuaotian/tap
-
-# 安装
-brew install sanshu
-```
-
-### 📦 安装与环境配置（下载版）
-
-如果您选择直接下载预编译的可执行文件，请按照以下步骤完成安装和环境配置。
-
-#### 1️⃣ 下载并放置可执行文件
-
-从 [Releases 页面](https://github.com/yuaotian/sanshu/releases) 下载对应平台的压缩包，解压后将可执行文件放置到以下推荐目录：
-
-| 平台 | 推荐安装路径 | 说明 |
-|------|-------------|------|
-| **Windows** | `C:\Program Files\sanshu\` | 需要管理员权限 |
-| **Windows** | `%LOCALAPPDATA%\sanshu\` | 无需管理员权限（推荐） |
-| **Linux** | `~/.local/bin/` | 用户级安装（推荐） |
-| **Linux** | `/usr/local/bin/` | 系统级安装，需要 sudo |
-| **macOS** | `~/.local/bin/` | 用户级安装（推荐） |
-| **macOS** | `/usr/local/bin/` | 系统级安装，需要 sudo |
-
-#### 2️⃣ 配置环境变量
-
-将可执行文件所在目录添加到系统 PATH 环境变量中：
-
-<details>
-<summary>🪟 Windows 配置方法</summary>
-
-**方法一：通过系统设置（图形界面）**
-
-1. 按 `Win + R`，输入 `sysdm.cpl`，回车
-2. 点击「高级」选项卡 → 「环境变量」
-3. 在「用户变量」或「系统变量」中找到 `Path`，点击「编辑」
-4. 点击「新建」，添加可执行文件所在目录（如 `C:\Program Files\sanshu\`）
-5. 点击「确定」保存，**重启终端**使配置生效
-
-**方法二：通过 PowerShell 命令**
-
-```powershell
-# 添加到用户级 PATH（无需管理员权限）
-$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-[Environment]::SetEnvironmentVariable("Path", "$userPath;C:\Program Files\sanshu\", "User")
-
-# 或添加到系统级 PATH（需要管理员权限）
-$machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
-[Environment]::SetEnvironmentVariable("Path", "$machinePath;C:\Program Files\sanshu\", "Machine")
-```
-
-> ⚠️ 配置完成后需要**重启终端**或**重新登录**使配置生效。
-
-</details>
-
-<details>
-<summary>🐧 Linux 配置方法</summary>
-
-根据您使用的 Shell，编辑对应的配置文件：
-
-```bash
-# Bash 用户（编辑 ~/.bashrc）
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-
-# Zsh 用户（编辑 ~/.zshrc）
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-
-# 或编辑 ~/.profile（对所有 Shell 生效）
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.profile
-source ~/.profile
-```
-
-</details>
-
-<details>
-<summary>🍎 macOS 配置方法</summary>
-
-根据您使用的 Shell，编辑对应的配置文件：
-
-```bash
-# Zsh 用户（macOS 默认 Shell，编辑 ~/.zshrc）
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-
-# Bash 用户（编辑 ~/.bash_profile）
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bash_profile
-source ~/.bash_profile
-```
-
-</details>
-
-#### 3️⃣ 验证安装
-
-打开**新的终端窗口**，运行以下命令验证配置是否成功：
-
-```bash
-# 使用中文命令名
-三术 --version
-
-# 或使用拼音命令名
-sanshu --version
-```
-
-如果正确显示版本号（如 `sanshu 0.2.x`），说明环境变量配置成功。
-
-#### ⚠️ 重要说明
-
-> **环境变量配置是 MCP 客户端正常工作的前提条件。**
->
-> - ✅ **已配置环境变量**：MCP 配置中可直接使用 `"command": "三术"` 或 `"command": "sanshu"`
-> - ❌ **未配置环境变量**：需要在 MCP 配置中使用**完整路径**，例如：
->   ```json
->   {
->     "mcpServers": {
->       "sanshu": {
->         "command": "C:\\Program Files\\sanshu\\三术.exe"
->       }
->     }
->   }
->   ```
 
 ### ⚙️ 配置 MCP 客户端
 
