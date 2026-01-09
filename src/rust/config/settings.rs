@@ -396,7 +396,7 @@ pub fn default_continue_prompt() -> String {
 
 pub fn default_mcp_tools() -> HashMap<String, bool> {
     let mut tools = HashMap::new();
-    tools.insert(mcp::TOOL_ZHI.to_string(), true); // 三术工具默认启用（核心工具，不可禁用）
+    tools.insert(mcp::TOOL_ZHI.to_string(), true); // prompt工具默认启用（核心工具，不可禁用）
     tools.insert(mcp::TOOL_JI.to_string(), true); // 记忆管理工具默认启用（核心功能，不依赖外部配置，开箱即用）
     tools.insert(mcp::TOOL_SOU.to_string(), false); // 代码搜索工具默认关闭（依赖第三方 acemcp 服务，需要用户配置 token 和 URL）
     tools.insert(mcp::TOOL_CONTEXT7.to_string(), true); // Context7 文档查询工具默认启用（支持免费使用，无需配置即可使用）

@@ -3,17 +3,33 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct ZhiRequest {
-    #[schemars(description = "要显示给用户的消息")]
+    #[schemars(description = "The content to display")]
     pub message: String,
-    #[schemars(description = "预定义的选项列表（可选）")]
-    #[serde(default)]
-    pub predefined_options: Vec<String>,
-    #[schemars(description = "消息是否为Markdown格式，默认为true")]
-    #[serde(default = "default_is_markdown")]
-    pub is_markdown: bool,
-    #[schemars(description = "项目根路径（可选，用于索引状态可视化）")]
+    
+    // Support both old name (predefined_options) and new name (choices) for compatibility
+    #[schemars(description = "Optional list of response templates")]
+    #[serde(default, alias = "predefined_options")]
+    pub choices: Vec<String>,
+    
+    #[schemars(description = "Enable rich text formatting, defaults to true")]
+    #[serde(default = "default_is_markdown", alias = "is_markdown")]
+    pub format: bool,
+    
+    #[schemars(description = "Project root path for context")]
     #[serde(default)]
     pub project_root_path: Option<String>,
+}
+
+impl ZhiRequest {
+    /// Get choices (for backward compatibility with predefined_options)
+    pub fn get_choices(&self) -> &Vec<String> {
+        &self.choices
+    }
+    
+    /// Get format setting (for backward compatibility with is_markdown)
+    pub fn get_format(&self) -> bool {
+        self.format
+    }
 }
 
 fn default_is_markdown() -> bool {
@@ -22,15 +38,15 @@ fn default_is_markdown() -> bool {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct JiyiRequest {
-    #[schemars(description = "操作类型：记忆(添加记忆), 回忆(获取项目信息)")]
+    #[schemars(description = "Operation type: store (add entry), recall (get project info)")]
     pub action: String,
-    #[schemars(description = "项目路径（必需）")]
+    #[schemars(description = "Project path (required)")]
     pub project_path: String,
-    #[schemars(description = "记忆内容（记忆操作时必需）")]
+    #[schemars(description = "Entry content (required for store operation)")]
     #[serde(default)]
     pub content: String,
     #[schemars(
-        description = "记忆分类：rule(规范规则), preference(用户偏好), pattern(最佳实践), context(项目上下文)"
+        description = "Category: rule, preference, pattern, context"
     )]
     #[serde(default = "default_category")]
     pub category: String,
@@ -38,9 +54,9 @@ pub struct JiyiRequest {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 pub struct AcemcpRequest {
-    #[schemars(description = "项目根目录的绝对路径，使用正斜杠(/)作为分隔符")]
+    #[schemars(description = "Absolute path to project root directory using forward slashes")]
     pub project_root_path: String,
-    #[schemars(description = "用于查找相关代码上下文的自然语言搜索查询")]
+    #[schemars(description = "Natural language search query to find relevant code context")]
     pub query: String,
 }
 
@@ -57,7 +73,7 @@ pub struct PopupRequest {
     pub project_root_path: Option<String>,
 }
 
-/// 新的结构化响应数据格式
+/// Structured response data format
 #[derive(Debug, Deserialize)]
 pub struct McpResponse {
     pub user_input: Option<String>,
@@ -80,7 +96,7 @@ pub struct ResponseMetadata {
     pub source: Option<String>,
 }
 
-/// 旧格式兼容性支持
+/// Legacy format compatibility
 #[derive(Debug, Deserialize)]
 pub struct McpResponseContent {
     #[serde(rename = "type")]
@@ -97,9 +113,7 @@ pub struct ImageSource {
     pub data: String,
 }
 
-/// 统一的响应构建函数
-///
-/// 用于生成标准的JSON响应格式，确保无GUI和有GUI模式输出一致
+/// Build MCP response
 pub fn build_mcp_response(
     user_input: Option<String>,
     selected_options: Vec<String>,
@@ -119,7 +133,7 @@ pub fn build_mcp_response(
     })
 }
 
-/// 构建发送操作的响应
+/// Build send response
 pub fn build_send_response(
     user_input: Option<String>,
     selected_options: Vec<String>,
@@ -131,13 +145,12 @@ pub fn build_send_response(
     response.to_string()
 }
 
-/// 构建继续操作的响应
+/// Build continue response
 pub fn build_continue_response(request_id: Option<String>, source: &str) -> String {
-    // 动态获取继续提示词
     let continue_prompt = if let Ok(config) = crate::config::load_standalone_config() {
         config.reply_config.continue_prompt
     } else {
-        "请按照最佳实践继续".to_string()
+        "Please continue following best practices".to_string()
     };
 
     let response = build_mcp_response(Some(continue_prompt), vec![], vec![], request_id, source);

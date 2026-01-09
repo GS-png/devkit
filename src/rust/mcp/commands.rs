@@ -27,11 +27,11 @@ pub async fn get_mcp_tools_config(state: State<'_, AppState>) -> Result<Vec<MCPT
     // 动态构建工具配置列表
     let mut tools = Vec::new();
     
-    // 三术工具 - 始终存在，无配置选项
+    // prompt工具 - 始终存在，无配置选项
     tools.push(MCPToolConfig {
         id: mcp::TOOL_ZHI.to_string(),
-        name: "三术".to_string(),
-        description: "智能代码审查交互工具，支持预定义选项、自由文本输入和图片上传".to_string(),
+        name: "Prompt".to_string(),
+        description: "Display content with configurable response templates".to_string(),
         enabled: config.mcp_config.tools.get(mcp::TOOL_ZHI).copied().unwrap_or(true),
         can_disable: false, // 三术工具是必需的
         icon: "i-carbon-chat text-lg text-blue-600 dark:text-blue-400".to_string(),
@@ -98,7 +98,7 @@ pub async fn set_mcp_tool_enabled(
         
         // 检查工具是否可以禁用
         if tool_id == mcp::TOOL_ZHI && !enabled {
-            return Err("三术工具是必需的，无法禁用".to_string());
+            return Err("Prompt工具是必需的，无法禁用".to_string());
         }
         
         // 更新工具状态

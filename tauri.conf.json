@@ -1,18 +1,18 @@
 {
   "$schema": "https://schema.tauri.app/config/2.0.0",
-  "productName": "三术",
+  "productName": "sanshu",
   "version": "0.2.5",
   "identifier": "com.yuaotian.sanshu",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build",
     "frontendDist": "./dist",
-    "devUrl": "http://localhost:5176"
+    "devUrl": "http://127.0.0.1:5176"
   },
   "app": {
     "windows": [
       {
-        "title": "三术",
+        "title": "sanshu",
         "width": 600,
         "height": 800,
         "minWidth": 600,

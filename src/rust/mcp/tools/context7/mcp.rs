@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rmcp::model::{ErrorData as McpError, Tool, CallToolResult, Content};
+use rmcp::model::{ErrorData as McpError, Tool, ToolAnnotations, CallToolResult, Content};
 use reqwest::header::AUTHORIZATION;
 use reqwest::Client;
 use serde_json::json;
@@ -11,26 +11,24 @@ use super::types::{Context7Request, Context7Config, SearchResponse, SearchResult
 use crate::log_debug;
 use crate::log_important;
 
-/// Context7 工具实现
+/// Context7 tool implementation
 pub struct Context7Tool;
 
 impl Context7Tool {
-    /// 查询框架文档
+    /// Query framework documentation
     pub async fn query_docs(request: Context7Request) -> Result<CallToolResult, McpError> {
         log_important!(info,
-            "Context7 查询请求: library={}, topic={:?}, version={:?}, page={:?}",
+            "Context7 query: library={}, topic={:?}, version={:?}, page={:?}",
             request.library, request.topic, request.version, request.page
         );
 
-        // 读取配置
         let config = Self::get_config()
             .await
-            .map_err(|e| McpError::internal_error(format!("获取 Context7 配置失败: {}", e), None))?;
+            .map_err(|e| McpError::internal_error(format!("Failed to get Context7 config: {}", e), None))?;
 
-        // 执行查询
         match Self::fetch_docs(&config, &request).await {
             Ok(result) => {
-                log_important!(info, "Context7 查询成功");
+                log_important!(info, "Context7 query success");
                 Ok(CallToolResult {
                     content: vec![Content::text(result)],
                     is_error: Some(false),
@@ -39,7 +37,7 @@ impl Context7Tool {
                 })
             }
             Err(e) => {
-                let error_msg = format!("Context7 查询失败: {}", e);
+                let error_msg = format!("Context7 query failed: {}", e);
                 log_important!(warn, "{}", error_msg);
                 Ok(CallToolResult {
                     content: vec![Content::text(error_msg)],
@@ -51,26 +49,26 @@ impl Context7Tool {
         }
     }
 
-    /// 获取工具定义
+    /// Get tool definition
     pub fn get_tool_definition() -> Tool {
         let schema = json!({
             "type": "object",
             "properties": {
                 "library": {
                     "type": "string",
-                    "description": "库标识符，格式: owner/repo (例如: vercel/next.js, facebook/react, spring-projects/spring-framework)"
+                    "description": "Library identifier in format: owner/repo (e.g., vercel/next.js, facebook/react)"
                 },
                 "topic": {
                     "type": "string",
-                    "description": "查询主题 (可选，例如: routing, authentication, core)"
+                    "description": "Query topic (optional, e.g., routing, authentication, core)"
                 },
                 "version": {
                     "type": "string",
-                    "description": "版本号 (可选，例如: v15.1.8)"
+                    "description": "Version number (optional, e.g., v15.1.8)"
                 },
                 "page": {
                     "type": "integer",
-                    "description": "分页页码 (可选，默认1，最大10)",
+                    "description": "Page number (optional, default 1, max 10)",
                     "minimum": 1,
                     "maximum": 10
                 }
@@ -81,24 +79,29 @@ impl Context7Tool {
         if let serde_json::Value::Object(schema_map) = schema {
             Tool {
                 name: Cow::Borrowed("context7"),
-                description: Some(Cow::Borrowed("查询最新的框架和库文档，支持 Next.js、React、Vue、Spring 等主流框架。免费使用无需配置，配置 API Key 后可获得更高速率限制。")),
+                description: Some(Cow::Borrowed("Query framework and library documentation. Supports Next.js, React, Vue, Spring, etc.")),
                 input_schema: Arc::new(schema_map),
-                annotations: None,
+                annotations: Some(ToolAnnotations {
+                    title: Some("Documentation Query".to_string()),
+                    read_only_hint: Some(true),       // Only reads external docs
+                    destructive_hint: Some(false),    // Not destructive
+                    idempotent_hint: Some(true),      // Same query = same result
+                    open_world_hint: Some(true),      // Interacts with external API
+                }),
                 icons: None,
                 meta: None,
                 output_schema: None,
-                title: None,
+                title: Some("Documentation Query".to_string()),
             }
         } else {
             panic!("Schema creation failed");
         }
     }
 
-    /// 获取配置
+    /// Get config
     async fn get_config() -> Result<Context7Config> {
-        // 从配置文件中读取 Context7 配置
         let config = crate::config::load_standalone_config()
-            .map_err(|e| anyhow::anyhow!("读取配置文件失败: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to read config: {}", e))?;
 
         Ok(Context7Config {
             api_key: config.mcp_config.context7_api_key,
@@ -106,28 +109,24 @@ impl Context7Tool {
         })
     }
 
-    /// 执行 HTTP 请求获取文档
+    /// Fetch docs via HTTP
     async fn fetch_docs(config: &Context7Config, request: &Context7Request) -> Result<String> {
         let client = Client::builder()
             .timeout(Duration::from_secs(30))
             .build()?;
 
-        // 构建 URL
         let url = format!("{}/docs/code/{}", config.base_url, request.library);
-        log_debug!("Context7 请求 URL: {}", url);
+        log_debug!("Context7 request URL: {}", url);
 
-        // 构建请求
         let mut req_builder = client.get(&url);
 
-        // 添加 API Key (如果有)
         if let Some(api_key) = &config.api_key {
             req_builder = req_builder.header(AUTHORIZATION, format!("Bearer {}", api_key));
-            log_debug!("使用 API Key 进行认证");
+            log_debug!("Using API Key for auth");
         } else {
-            log_debug!("免费模式，无 API Key");
+            log_debug!("Free mode, no API Key");
         }
 
-        // 添加查询参数
         if let Some(topic) = &request.topic {
             req_builder = req_builder.query(&[("topic", topic)]);
         }
@@ -138,95 +137,83 @@ impl Context7Tool {
             req_builder = req_builder.query(&[("page", page.to_string())]);
         }
 
-        // 发送请求
         let response = req_builder.send().await?;
         let status = response.status();
 
-        log_debug!("Context7 响应状态: {}", status);
+        log_debug!("Context7 response status: {}", status);
 
-        // 处理错误状态码
         if !status.is_success() {
-            let error_text = response.text().await.unwrap_or_else(|_| "无法读取错误信息".to_string());
+            let error_text = response.text().await.unwrap_or_else(|_| "Unable to read error".to_string());
 
-            // 404 错误时触发智能降级：搜索候选库
             if status.as_u16() == 404 {
-                log_important!(info, "库 '{}' 不存在，触发智能搜索", request.library);
+                log_important!(info, "Library '{}' not found, triggering search", request.library);
                 return Self::handle_not_found_with_search(config, request).await;
             }
 
             return Err(anyhow::anyhow!(
-                "API 请求失败 (状态码: {}): {}",
+                "API request failed (status: {}): {}",
                 status,
                 Self::format_error_message(status.as_u16(), &error_text)
             ));
         }
 
-        // 读取响应文本 (Context7 API 返回纯文本 Markdown，不是 JSON)
         let response_text = response.text().await?;
 
-        // 如果响应为空
         if response_text.trim().is_empty() {
-            return Ok("未找到相关文档。请尝试调整查询参数。".to_string());
+            return Ok("No documentation found. Try adjusting query parameters.".to_string());
         }
 
-        // 格式化输出（添加标题和元信息）
         Ok(Self::format_text_response(&response_text, request))
     }
 
-    /// 格式化错误消息
+    /// Format error message
     fn format_error_message(status_code: u16, error_text: &str) -> String {
         match status_code {
-            401 => "API 密钥无效或已过期，请检查配置".to_string(),
-            404 => format!("库不存在或拼写错误: {}", error_text),
-            429 => "速率限制已达上限，建议配置 API Key 以获得更高速率限制".to_string(),
-            500..=599 => format!("Context7 服务器错误: {}", error_text),
+            401 => "Invalid or expired API key".to_string(),
+            404 => format!("Library not found: {}", error_text),
+            429 => "Rate limit reached, consider configuring an API Key".to_string(),
+            500..=599 => format!("Context7 server error: {}", error_text),
             _ => error_text.to_string(),
         }
     }
 
-    /// 格式化纯文本响应为 Markdown（添加标题和元信息）
+    /// Format text response to Markdown
     fn format_text_response(content: &str, request: &Context7Request) -> String {
         let mut output = String::new();
 
-        // 添加标题
-        output.push_str(&format!("# {} 文档\n\n", request.library));
+        output.push_str(&format!("# {} Documentation\n\n", request.library));
 
         if let Some(topic) = &request.topic {
-            output.push_str(&format!("**主题**: {}\n", topic));
+            output.push_str(&format!("**Topic**: {}\n", topic));
         }
         if let Some(version) = &request.version {
-            output.push_str(&format!("**版本**: {}\n", version));
+            output.push_str(&format!("**Version**: {}\n", version));
         }
         if let Some(page) = request.page {
-            output.push_str(&format!("**页码**: {}\n", page));
+            output.push_str(&format!("**Page**: {}\n", page));
         }
         output.push_str("\n---\n\n");
 
-        // 添加文档内容
         output.push_str(content);
 
-        // 添加来源信息
-        output.push_str(&format!("\n\n---\n🔗 来源: Context7 - {}\n", request.library));
+        output.push_str(&format!("\n\n---\nSource: Context7 - {}\n", request.library));
 
         output
     }
 
-    /// 处理 404 错误：搜索候选库并返回建议
+    /// Handle 404 error: search for candidate libraries
     async fn handle_not_found_with_search(
         config: &Context7Config,
         request: &Context7Request,
     ) -> Result<String> {
-        // 从 library 参数中提取搜索关键词
-        // 如果是 owner/repo 格式，使用 repo 部分；否则使用整个字符串
         let search_query = if request.library.contains('/') {
             request.library.split('/').last().unwrap_or(&request.library)
         } else {
             &request.library
         };
 
-        log_debug!("搜索关键词: {}", search_query);
+        log_debug!("Search query: {}", search_query);
 
-        // 执行搜索
         match Self::search_libraries(config, search_query).await {
             Ok(results) => {
                 if results.is_empty() {
@@ -236,25 +223,23 @@ impl Context7Tool {
                 }
             }
             Err(e) => {
-                // 搜索失败时，返回基本的 404 错误信息
-                log_debug!("搜索失败: {}", e);
+                log_debug!("Search failed: {}", e);
                 Ok(Self::format_not_found_no_suggestions(&request.library))
             }
         }
     }
 
-    /// 搜索库
+    /// Search libraries
     async fn search_libraries(config: &Context7Config, query: &str) -> Result<Vec<SearchResult>> {
         let client = Client::builder()
             .timeout(Duration::from_secs(15))
             .build()?;
 
         let url = format!("{}/search", config.base_url);
-        log_debug!("Context7 搜索 URL: {}", url);
+        log_debug!("Context7 search URL: {}", url);
 
         let mut req_builder = client.get(&url).query(&[("query", query)]);
 
-        // 添加 API Key (如果有)
         if let Some(api_key) = &config.api_key {
             req_builder = req_builder.header(AUTHORIZATION, format!("Bearer {}", api_key));
         }
@@ -263,49 +248,46 @@ impl Context7Tool {
         let status = response.status();
 
         if !status.is_success() {
-            return Err(anyhow::anyhow!("搜索请求失败: {}", status));
+            return Err(anyhow::anyhow!("Search request failed: {}", status));
         }
 
         let response_text = response.text().await?;
         let search_response: SearchResponse = serde_json::from_str(&response_text)
-            .map_err(|e| anyhow::anyhow!("解析搜索响应失败: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to parse search response: {}", e))?;
 
-        // 返回前 5 个结果
         Ok(search_response.results.into_iter().take(5).collect())
     }
 
-    /// 格式化 404 错误消息（无搜索建议）
+    /// Format 404 error message (no suggestions)
     fn format_not_found_no_suggestions(library: &str) -> String {
         format!(
-            "❌ **未找到库 \"{}\"**\n\n\
-            请检查库标识符是否正确。正确格式为 `owner/repo`，例如：\n\
+            "**Library \"{}\" not found**\n\n\
+            Please check the library identifier. Format: `owner/repo`, e.g.:\n\
             - `vercel/next.js`\n\
             - `facebook/react`\n\
             - `spring-projects/spring-framework`\n\n\
-            💡 提示：您可以在 [Context7](https://context7.com) 网站上搜索库。",
+            Tip: Search for libraries at [Context7](https://context7.com)",
             library
         )
     }
 
-    /// 格式化 404 错误消息（带搜索建议）
+    /// Format 404 error message (with suggestions)
     fn format_not_found_with_suggestions(library: &str, results: &[SearchResult]) -> String {
         let mut output = format!(
-            "❌ **未找到库 \"{}\"**\n\n\
-            💡 **建议**：以下是搜索到的相关库，请使用完整的库标识符重新查询：\n\n",
+            "**Library \"{}\" not found**\n\n\
+            **Suggestions**: Related libraries found, use full identifier to query:\n\n",
             library
         );
 
         for (idx, result) in results.iter().enumerate() {
-            // 去掉 id 开头的 /
             let lib_id = result.id.trim_start_matches('/');
 
-            // 构建库信息行
             let mut info_parts = Vec::new();
             if let Some(stars) = result.stars {
-                info_parts.push(format!("⭐ {}", Self::format_stars(stars)));
+                info_parts.push(format!("Stars: {}", Self::format_stars(stars)));
             }
             if let Some(trust_score) = result.trust_score {
-                info_parts.push(format!("信任分数: {:.1}", trust_score));
+                info_parts.push(format!("Score: {:.1}", trust_score));
             }
 
             let info_str = if info_parts.is_empty() {
@@ -321,9 +303,7 @@ impl Context7Tool {
                 info_str
             ));
 
-            // 添加描述（如果有）
             if let Some(desc) = &result.description {
-                // 截取前 100 个字符
                 let short_desc = if desc.len() > 100 {
                     format!("{}...", &desc[..100])
                 } else {
@@ -335,7 +315,7 @@ impl Context7Tool {
         }
 
         output.push_str("---\n\n");
-        output.push_str("请使用完整的库标识符重新查询，例如：\n");
+        output.push_str("Use full library identifier, e.g.:\n");
         output.push_str("```json\n");
         if let Some(first) = results.first() {
             let lib_id = first.id.trim_start_matches('/');
@@ -349,7 +329,7 @@ impl Context7Tool {
         output
     }
 
-    /// 格式化 stars 数量（大数字使用 K 表示）
+    /// Format stars count
     fn format_stars(stars: u64) -> String {
         if stars >= 1000 {
             format!("{:.1}K", stars as f64 / 1000.0)

@@ -104,11 +104,11 @@ export const CORE_RULES = `
  * 新增工具时只需在此数组中添加配置即可
  */
 export const MCP_TOOLS_CONFIG: ToolPromptConfig[] = [
-  // zhi (智) - 强制交互网关
+  // zhi (智) - 强制交互网关（异步两步模式）
   {
     id: 'zhi',
     name: '三术',
-    description: '智能代码审查交互工具，支持预定义选项、自由文本输入和图片上传',
+    description: '异步交互工具：1)调用prompt启动对话框获取task_id 2)调用get_result获取用户响应',
     prompt: {
       base: '', // 交互控制规则已在 CORE_RULES 中定义
       whenToUse: [
@@ -118,7 +118,10 @@ export const MCP_TOOLS_CONFIG: ToolPromptConfig[] = [
         '任务完成前：必须请求最终确认',
       ],
       howToUse: [
-        '未得到完成指令前禁止主动结束对话',
+        '【重要】两步交互流程：',
+        '1. 调用prompt显示对话框，获取task_id',
+        '2. 等待用户在聊天中说"完成"/"done"/"ok"后，再调用get_result(task_id)',
+        '⚠️ 禁止自动轮询get_result，必须等用户确认后才调用',
       ],
     },
     ui: {

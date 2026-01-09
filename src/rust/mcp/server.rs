@@ -27,11 +27,11 @@ impl Default for ZhiServer {
 
 impl ZhiServer {
     pub fn new() -> Self {
-        // 尝试加载配置，如果失败则使用默认配置
+        // Load config, use defaults on failure
         let enabled_tools = match load_standalone_config() {
             Ok(config) => config.mcp_config.tools,
             Err(e) => {
-                log_important!(warn, "无法加载配置文件，使用默认工具配置: {}", e);
+                log_important!(warn, "Failed to load config, using defaults: {}", e);
                 crate::config::default_mcp_tools()
             }
         };
@@ -39,18 +39,18 @@ impl ZhiServer {
         Self { enabled_tools }
     }
 
-    /// 检查工具是否启用 - 动态读取最新配置
+    /// Check if tool is enabled - reads latest config
     fn is_tool_enabled(&self, tool_name: &str) -> bool {
-        // 每次都重新读取配置，确保获取最新状态
+        // Re-read config each time to get latest state
         match load_standalone_config() {
             Ok(config) => {
                 let enabled = config.mcp_config.tools.get(tool_name).copied().unwrap_or(true);
-                log_debug!("工具 {} 当前状态: {}", tool_name, enabled);
+                log_debug!("Tool {} status: {}", tool_name, enabled);
                 enabled
             }
             Err(e) => {
-                log_important!(warn, "读取配置失败，使用缓存状态: {}", e);
-                // 如果读取失败，使用缓存的配置
+                log_important!(warn, "Config read failed, using cached: {}", e);
+                // Use cached config on read failure
                 self.enabled_tools.get(tool_name).copied().unwrap_or(true)
             }
         }
@@ -63,13 +63,13 @@ impl ServerHandler for ZhiServer {
             protocol_version: ProtocolVersion::V_2024_11_05,
             capabilities: ServerCapabilities::builder().enable_tools().build(),
             server_info: Implementation {
-                name: "Zhi-mcp".to_string(),
+                name: "dev-utils".to_string(),
                 version: env!("CARGO_PKG_VERSION").to_string(),
                 icons: None,
                 title: None,
                 website_url: None,
             },
-            instructions: Some("Zhi 智能代码审查工具，支持交互式对话和记忆管理".to_string()),
+            instructions: Some("Development utilities for project management".to_string()),
         }
     }
 
@@ -91,60 +91,97 @@ impl ServerHandler for ZhiServer {
 
         let mut tools = Vec::new();
 
-        // 三术工具始终可用（必需工具）
-        let zhi_schema = serde_json::json!({
+        // Async prompt tool - starts interaction and returns immediately
+        let prompt_schema = serde_json::json!({
             "type": "object",
             "properties": {
                 "message": {
                     "type": "string",
-                    "description": "要显示给用户的消息"
+                    "description": "The content to display to the user"
                 },
-                "predefined_options": {
+                "choices": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "预定义的选项列表（可选）"
+                    "description": "Optional list of response templates for user to choose"
                 },
-                "is_markdown": {
+                "format": {
                     "type": "boolean",
-                    "description": "消息是否为Markdown格式，默认为true"
+                    "description": "Enable rich text formatting, defaults to true"
                 }
             },
             "required": ["message"]
         });
 
-        if let serde_json::Value::Object(schema_map) = zhi_schema {
+        if let serde_json::Value::Object(schema_map) = prompt_schema {
             tools.push(Tool {
-                name: Cow::Borrowed("zhi"),
-                description: Some(Cow::Borrowed("智能代码审查交互工具，支持预定义选项、自由文本输入和图片上传")),
+                name: Cow::Borrowed("prompt"),
+                description: Some(Cow::Borrowed("Start an interactive prompt. Returns a task_id immediately. IMPORTANT: Do NOT call prompt repeatedly. If a task is already pending, prompt will return the existing task_id. After the user completes input, call get_result with this task_id.")),
                 input_schema: Arc::new(schema_map),
-                annotations: None,
+                annotations: Some(ToolAnnotations {
+                    title: Some("Interactive Prompt".to_string()),
+                    read_only_hint: Some(true),
+                    destructive_hint: Some(false),
+                    idempotent_hint: Some(false),    // Each call creates new task
+                    open_world_hint: Some(false),
+                }),
                 icons: None,
                 meta: None,
                 output_schema: None,
-                title: None,
+                title: Some("Interactive Prompt".to_string()),
             });
         }
 
-        // 记忆管理工具 - 仅在启用时添加
+        // Get result tool - polls for user response
+        let get_result_schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "task_id": {
+                    "type": "string",
+                    "description": "The task_id returned by the prompt tool"
+                }
+            },
+            "required": ["task_id"]
+        });
+
+        if let serde_json::Value::Object(schema_map) = get_result_schema {
+            tools.push(Tool {
+                name: Cow::Borrowed("get_result"),
+                description: Some(Cow::Borrowed("Get the result of a prompt. Call this after calling prompt to retrieve the user's response. If user hasn't responded yet, it returns WAITING. IMPORTANT: Do NOT auto-poll. Only call again after the user confirms they have finished input.")),
+                input_schema: Arc::new(schema_map),
+                annotations: Some(ToolAnnotations {
+                    title: Some("Get Prompt Result".to_string()),
+                    read_only_hint: Some(true),
+                    destructive_hint: Some(false),
+                    idempotent_hint: Some(true),
+                    open_world_hint: Some(false),
+                }),
+                icons: None,
+                meta: None,
+                output_schema: None,
+                title: Some("Get Prompt Result".to_string()),
+            });
+        }
+
+        // Memory tool - only when enabled
         if self.is_tool_enabled("ji") {
             let ji_schema = serde_json::json!({
                 "type": "object",
                 "properties": {
                     "action": {
                         "type": "string",
-                        "description": "操作类型：记忆(添加记忆), 回忆(获取项目信息)"
+                        "description": "Operation type: store (add entry), recall (get project info)"
                     },
                     "project_path": {
                         "type": "string",
-                        "description": "项目路径（必需）"
+                        "description": "Project path (required)"
                     },
                     "content": {
                         "type": "string",
-                        "description": "记忆内容（记忆操作时必需）"
+                        "description": "Entry content (required for store operation)"
                     },
                     "category": {
                         "type": "string",
-                        "description": "记忆分类：rule(规范规则), preference(用户偏好), pattern(最佳实践), context(项目上下文)"
+                        "description": "Category: rule, preference, pattern, context"
                     }
                 },
                 "required": ["action", "project_path"]
@@ -152,29 +189,35 @@ impl ServerHandler for ZhiServer {
 
             if let serde_json::Value::Object(schema_map) = ji_schema {
                 tools.push(Tool {
-                    name: Cow::Borrowed("ji"),
-                    description: Some(Cow::Borrowed("全局记忆管理工具，用于存储和管理重要的开发规范、用户偏好和最佳实践")),
+                    name: Cow::Borrowed("memory"),
+                    description: Some(Cow::Borrowed("Project memory storage for development context and preferences")),
                     input_schema: Arc::new(schema_map),
-                    annotations: None,
+                    annotations: Some(ToolAnnotations {
+                        title: Some("Project Memory".to_string()),
+                        read_only_hint: Some(false),     // Can modify (store data)
+                        destructive_hint: Some(false),   // Not destructive, only additive
+                        idempotent_hint: Some(true),     // Storing same data is idempotent
+                        open_world_hint: Some(false),    // Closed domain, local storage
+                    }),
                     icons: None,
                     meta: None,
                     output_schema: None,
-                    title: None,
+                    title: Some("Project Memory".to_string()),
                 });
             }
         }
 
-        // 代码搜索工具 - 仅在启用时添加
+        // Search tool - only when enabled
         if self.is_tool_enabled("sou") {
             tools.push(AcemcpTool::get_tool_definition());
         }
 
-        // Context7 文档查询工具 - 仅在启用时添加
+        // Context7 tool - only when enabled
         if self.is_tool_enabled("context7") {
             tools.push(Context7Tool::get_tool_definition());
         }
 
-        log_debug!("返回给客户端的工具列表: {:?}", tools.iter().map(|t| &t.name).collect::<Vec<_>>());
+        log_debug!("Tools returned to client: {:?}", tools.iter().map(|t| &t.name).collect::<Vec<_>>());
 
         Ok(ListToolsResult {
             meta: None,
@@ -188,85 +231,87 @@ impl ServerHandler for ZhiServer {
         request: CallToolRequestParam,
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
-        log_debug!("收到工具调用请求: {}", request.name);
+        log_debug!("Tool call request: {}", request.name);
 
         match request.name.as_ref() {
-            "zhi" => {
-                // 解析请求参数
+            "prompt" => {
                 let arguments_value = request.arguments
                     .map(serde_json::Value::Object)
                     .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
                 let zhi_request: ZhiRequest = serde_json::from_value(arguments_value)
-                    .map_err(|e| McpError::invalid_params(format!("参数解析失败: {}", e), None))?;
+                    .map_err(|e| McpError::invalid_params(format!("Parameter parse error: {}", e), None))?;
 
-                // 调用三术工具
-                InteractionTool::zhi(zhi_request).await
+                // Use async version that returns immediately
+                InteractionTool::prompt_start(zhi_request).await
             }
-            "ji" => {
-                // 检查记忆管理工具是否启用
+            "get_result" => {
+                let arguments_value = request.arguments
+                    .map(serde_json::Value::Object)
+                    .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+
+                let task_id = arguments_value.get("task_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| McpError::invalid_params("task_id is required".to_string(), None))?;
+
+                InteractionTool::get_result(task_id).await
+            }
+            "memory" => {
+                // Check if memory tool is enabled
                 if !self.is_tool_enabled("ji") {
                     return Err(McpError::internal_error(
-                        "记忆管理工具已被禁用".to_string(),
+                        "Memory tool is disabled".to_string(),
                         None
                     ));
                 }
 
-                // 解析请求参数
                 let arguments_value = request.arguments
                     .map(serde_json::Value::Object)
                     .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
                 let ji_request: JiyiRequest = serde_json::from_value(arguments_value)
-                    .map_err(|e| McpError::invalid_params(format!("参数解析失败: {}", e), None))?;
+                    .map_err(|e| McpError::invalid_params(format!("Parameter parse error: {}", e), None))?;
 
-                // 调用记忆工具
                 MemoryTool::jiyi(ji_request).await
             }
             "sou" => {
-                // 检查代码搜索工具是否启用
                 if !self.is_tool_enabled("sou") {
                     return Err(McpError::internal_error(
-                        "代码搜索工具已被禁用".to_string(),
+                        "Search tool is disabled".to_string(),
                         None
                     ));
                 }
 
-                // 解析请求参数
                 let arguments_value = request.arguments
                     .map(serde_json::Value::Object)
                     .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
-                // 使用acemcp模块中的AcemcpRequest类型
                 let acemcp_request: crate::mcp::tools::acemcp::types::AcemcpRequest = serde_json::from_value(arguments_value)
-                    .map_err(|e| McpError::invalid_params(format!("参数解析失败: {}", e), None))?;
+                    .map_err(|e| McpError::invalid_params(format!("Parameter parse error: {}", e), None))?;
 
-                // 调用代码搜索工具
                 AcemcpTool::search_context(acemcp_request).await
             }
             "context7" => {
-                // 检查 Context7 工具是否启用
                 if !self.is_tool_enabled("context7") {
                     return Err(McpError::internal_error(
-                        "Context7 文档查询工具已被禁用".to_string(),
+                        "Context7 tool is disabled".to_string(),
                         None
                     ));
                 }
 
-                // 解析请求参数
                 let arguments_value = request.arguments
                     .map(serde_json::Value::Object)
                     .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
                 let context7_request: Context7Request = serde_json::from_value(arguments_value)
-                    .map_err(|e| McpError::invalid_params(format!("参数解析失败: {}", e), None))?;
+                    .map_err(|e| McpError::invalid_params(format!("Parameter parse error: {}", e), None))?;
 
-                // 调用 Context7 工具
                 Context7Tool::query_docs(context7_request).await
             }
             _ => {
                 Err(McpError::invalid_request(
-                    format!("未知的工具: {}", request.name),
+                    format!("Unknown tool: {}", request.name),
                     None
                 ))
             }
@@ -276,17 +321,15 @@ impl ServerHandler for ZhiServer {
 
 
 
-/// 启动MCP服务器
+/// Start MCP server
 pub async fn run_server() -> Result<(), Box<dyn std::error::Error>> {
-    // 创建并运行服务器
     let service = ZhiServer::new()
         .serve(stdio())
         .await
         .inspect_err(|e| {
-            log_important!(error, "启动服务器失败: {}", e);
+            log_important!(error, "Server start failed: {}", e);
         })?;
 
-    // 等待服务器关闭
     service.waiting().await?;
     Ok(())
 }

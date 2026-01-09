@@ -5,9 +5,7 @@ use super::{MemoryManager, MemoryCategory};
 use crate::mcp::{JiyiRequest, utils::{validate_project_path, project_path_error}};
 use crate::log_debug;
 
-/// 全局记忆管理工具
-///
-/// 用于存储和管理重要的开发规范、用户偏好和最佳实践
+/// Project memory management tool
 #[derive(Clone)]
 pub struct MemoryTool;
 
@@ -15,32 +13,30 @@ impl MemoryTool {
     pub async fn jiyi(
         request: JiyiRequest,
     ) -> Result<CallToolResult, McpError> {
-        // 使用增强的路径验证功能
         if let Err(e) = validate_project_path(&request.project_path) {
             return Err(project_path_error(format!(
-                "路径验证失败: {}\n原始路径: {}\n请检查路径格式是否正确，特别是 Windows 路径应使用正确的盘符格式（如 C:\\path）",
+                "Path validation failed: {}\nOriginal path: {}",
                 e,
                 request.project_path
             )).into());
         }
 
         let manager = MemoryManager::new(&request.project_path)
-            .map_err(|e| McpError::internal_error(format!("创建记忆管理器失败: {}", e), None))?;
+            .map_err(|e| McpError::internal_error(format!("Failed to create memory manager: {}", e), None))?;
 
-        // 检查 sou 工具是否启用，如果启用则尝试触发后台索引
         let mut index_hint = String::new();
         if is_sou_enabled() {
             if let Err(e) = try_trigger_background_index(&request.project_path).await {
-                log_debug!("触发后台索引失败（不影响记忆操作）: {}", e);
+                log_debug!("Background index trigger failed (not affecting memory): {}", e);
             } else {
-                index_hint = "\n\n💡 已为当前项目后台启动代码索引，以便后续 sou 工具使用。".to_string();
+                index_hint = "\n\nBackground code indexing started for this project.".to_string();
             }
         }
 
         let result = match request.action.as_str() {
-            "记忆" => {
+            "store" | "记忆" => {
                 if request.content.trim().is_empty() {
-                    return Err(McpError::invalid_params("缺少记忆内容".to_string(), None));
+                    return Err(McpError::invalid_params("Missing content".to_string(), None));
                 }
 
                 let category = match request.category.as_str() {
@@ -52,18 +48,18 @@ impl MemoryTool {
                 };
 
                 let id = manager.add_memory(&request.content, category)
-                    .map_err(|e| McpError::internal_error(format!("添加记忆失败: {}", e), None))?;
+                    .map_err(|e| McpError::internal_error(format!("Failed to add memory: {}", e), None))?;
 
-                format!("✅ 记忆已添加，ID: {}\n📝 内容: {}\n📂 分类: {:?}{}", id, request.content, category, index_hint)
+                format!("Memory added, ID: {}\nContent: {}\nCategory: {:?}{}", id, request.content, category, index_hint)
             }
-            "回忆" => {
+            "recall" | "回忆" => {
                 let info = manager.get_project_info()
-                    .map_err(|e| McpError::internal_error(format!("获取项目信息失败: {}", e), None))?;
+                    .map_err(|e| McpError::internal_error(format!("Failed to get project info: {}", e), None))?;
                 format!("{}{}", info, index_hint)
             }
             _ => {
                 return Err(McpError::invalid_params(
-                    format!("未知的操作类型: {}", request.action),
+                    format!("Unknown action: {}", request.action),
                     None
                 ));
             }
@@ -73,7 +69,7 @@ impl MemoryTool {
     }
 }
 
-/// 检查 sou 工具是否启用
+/// Check if sou tool is enabled
 fn is_sou_enabled() -> bool {
     match crate::config::load_standalone_config() {
         Ok(config) => config.mcp_config.tools.get("sou").copied().unwrap_or(false),
@@ -81,22 +77,17 @@ fn is_sou_enabled() -> bool {
     }
 }
 
-/// 尝试触发后台索引（仅在项目未初始化或索引失败时）
+/// Try to trigger background index
 async fn try_trigger_background_index(project_root: &str) -> Result<()> {
     use super::super::acemcp::mcp::{get_initial_index_state, ensure_initial_index_background, InitialIndexState};
 
-    // 获取 acemcp 配置：复用工具内部读取逻辑，避免字段新增/演进导致此处漏填
     let acemcp_config = super::super::acemcp::mcp::AcemcpTool::get_acemcp_config().await?;
-
-    // 检查索引状态
     let initial_state = get_initial_index_state(project_root);
 
-    // 仅在未初始化或失败时触发
     if matches!(initial_state, InitialIndexState::Missing | InitialIndexState::Idle | InitialIndexState::Failed) {
         ensure_initial_index_background(&acemcp_config, project_root).await?;
         Ok(())
     } else {
-        // 已经完成或正在进行，无需操作
         Ok(())
     }
 }

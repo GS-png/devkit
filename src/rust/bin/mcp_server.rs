@@ -1,11 +1,9 @@
-// MCP 服务器入口点
-use sanshu::{mcp::run_server, utils::auto_init_logger, log_important};
+// MCP server entry point
+use sanshu::{mcp::run_server, utils::init_mcp_logger, log_important};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 自动初始化日志系统
-    auto_init_logger()?;
-
-    log_important!(info, "启动 MCP 服务器");
+    init_mcp_logger()?;
+    log_important!(info, "Starting MCP server");
     run_server().await
 }

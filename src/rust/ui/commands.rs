@@ -383,13 +383,21 @@ pub async fn send_mcp_response(
 
     // 检查是否为MCP模式
     let args: Vec<String> = std::env::args().collect();
-    let is_mcp_mode = args.len() >= 3 && args[1] == "--mcp-request";
+    let is_mcp_mode = args.iter().any(|arg| arg == "--mcp-request");
 
     if is_mcp_mode {
-        // MCP模式：直接输出到stdout（MCP协议要求）
-        println!("{}", response_str);
-        std::io::Write::flush(&mut std::io::stdout())
-            .map_err(|e| format!("刷新stdout失败: {}", e))?;
+        // 检查是否有响应文件路径（分离式异步模式）
+        if let Ok(response_file) = std::env::var("MCP_RESPONSE_FILE") {
+            // 写入到响应文件（用于异步轮询模式）
+            std::fs::write(&response_file, &response_str)
+                .map_err(|e| format!("写入响应文件失败: {}", e))?;
+            log::info!("MCP响应已写入文件: {}", response_file);
+        } else {
+            // 传统模式：直接输出到stdout（MCP协议要求）
+            println!("{}", response_str);
+            std::io::Write::flush(&mut std::io::stdout())
+                .map_err(|e| format!("刷新stdout失败: {}", e))?;
+        }
     } else {
         // 通过channel发送响应（如果有的话）
         let sender = {

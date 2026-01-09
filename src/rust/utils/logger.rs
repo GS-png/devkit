@@ -293,7 +293,29 @@ pub fn auto_init_logger() -> Result<(), Box<dyn std::error::Error>> {
             rotation: LogRotationConfig::default(),
         }
     };
-    
+
+    init_logger(config)
+}
+
+/// MCP 专用：强制使用 MCP 模式初始化日志系统
+/// 主要用于 MCP 服务器进程，避免日志输出到 stderr 干扰 MCP 通讯。
+pub fn init_mcp_logger() -> Result<(), Box<dyn std::error::Error>> {
+    // 获取日志文件路径（优先使用环境变量）
+    let log_file_path = env::var("MCP_LOG_FILE")
+        .ok()
+        .or_else(|| get_gui_log_path().map(|p| p.to_string_lossy().to_string()))
+        .or_else(|| Some("/tmp/sanshu_mcp.log".to_string()));
+
+    let config = LogConfig {
+        level: env::var("RUST_LOG")
+            .unwrap_or_else(|_| "warn".to_string())
+            .parse::<LevelFilter>()
+            .unwrap_or(LevelFilter::Warn),
+        file_path: log_file_path,
+        is_mcp_mode: true,
+        rotation: LogRotationConfig::default(),
+    };
+
     init_logger(config)
 }
 

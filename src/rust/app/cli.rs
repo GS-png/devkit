@@ -7,34 +7,65 @@ use anyhow::Result;
 /// 处理命令行参数
 pub fn handle_cli_args() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
-
-    match args.len() {
-        // 无参数：正常启动GUI
-        1 => {
-            run_tauri_app();
-        }
-        // 单参数：帮助或版本
-        2 => {
-            match args[1].as_str() {
-                "--help" | "-h" => print_help(),
-                "--version" | "-v" => print_version(),
-                _ => {
-                    eprintln!("未知参数: {}", args[1]);
-                    print_help();
+    
+    // Parse arguments
+    let mut request_file: Option<String> = None;
+    let mut response_file: Option<String> = None;
+    let mut i = 1;
+    
+    while i < args.len() {
+        match args[i].as_str() {
+            "--help" | "-h" => {
+                print_help();
+                return Ok(());
+            }
+            "--version" | "-v" => {
+                print_version();
+                return Ok(());
+            }
+            "--mcp-request" => {
+                if i + 1 < args.len() {
+                    request_file = Some(args[i + 1].clone());
+                    i += 2;
+                } else {
+                    eprintln!("--mcp-request requires a file path");
                     std::process::exit(1);
                 }
             }
-        }
-        // 多参数：MCP请求模式
-        _ => {
-            if args[1] == "--mcp-request" && args.len() >= 3 {
-                handle_mcp_request(&args[2])?;
-            } else {
-                eprintln!("无效的命令行参数");
+            "--response-file" => {
+                if i + 1 < args.len() {
+                    response_file = Some(args[i + 1].clone());
+                    i += 2;
+                } else {
+                    eprintln!("--response-file requires a file path");
+                    std::process::exit(1);
+                }
+            }
+            _ => {
+                eprintln!("未知参数: {}", args[i]);
                 print_help();
                 std::process::exit(1);
             }
         }
+    }
+    
+    // No arguments - start GUI normally
+    if request_file.is_none() && response_file.is_none() && args.len() == 1 {
+        run_tauri_app();
+        return Ok(());
+    }
+    
+    // MCP request mode
+    if let Some(req_file) = request_file {
+        // Store response file path in environment for UI to use
+        if let Some(resp_file) = response_file {
+            std::env::set_var("MCP_RESPONSE_FILE", resp_file);
+        }
+        handle_mcp_request(&req_file)?;
+    } else {
+        eprintln!("无效的命令行参数");
+        print_help();
+        std::process::exit(1);
     }
 
     Ok(())

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use rmcp::model::{ErrorData as McpError, Tool, CallToolResult, Content};
+use rmcp::model::{ErrorData as McpError, Tool, ToolAnnotations, CallToolResult, Content};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -268,18 +268,18 @@ impl AcemcpTool {
     }
 
 
-    /// 获取工具定义
+    /// Get tool definition
     pub fn get_tool_definition() -> Tool {
         let schema = serde_json::json!({
             "type": "object",
             "properties": {
                 "project_root_path": {
                     "type": "string",
-                    "description": "项目根目录的绝对路径，使用正斜杠(/)作为分隔符。例如：C:/Users/username/projects/myproject"
+                    "description": "Absolute path to project root directory using forward slashes. Example: C:/Users/username/projects/myproject"
                 },
                 "query": {
                     "type": "string",
-                    "description": "用于查找相关代码上下文的自然语言搜索查询。此工具执行语义搜索并返回与查询匹配的代码片段。例如：'日志配置设置初始化logger'（查找日志设置代码）、'用户认证登录'（查找认证相关代码）、'数据库连接池'（查找数据库连接代码）、'错误处理异常'（查找错误处理模式）、'API端点路由'（查找API路由定义）。工具返回带有文件路径和行号的格式化文本片段，显示相关代码的位置。"
+                    "description": "Natural language search query to find relevant code context. Returns code snippets matching the query with file paths and line numbers."
                 }
             },
             "required": ["project_root_path", "query"]
@@ -288,13 +288,19 @@ impl AcemcpTool {
         if let serde_json::Value::Object(schema_map) = schema {
             Tool {
                 name: Cow::Borrowed("sou"),
-                description: Some(Cow::Borrowed("基于查询在特定项目中搜索相关的代码上下文。依赖后台增量索引与文件监听机制维护索引，并在索引进行中通过智能等待在实时性和响应速度之间做平衡。返回代码库中与查询语义相关的格式化文本片段。")),
+                description: Some(Cow::Borrowed("Search for relevant code context in a project using semantic queries. Returns formatted code snippets matching the query.")),
                 input_schema: Arc::new(schema_map),
-                annotations: None,
+                annotations: Some(ToolAnnotations {
+                    title: Some("Code Search".to_string()),
+                    read_only_hint: Some(true),       // Only searches, doesn't modify
+                    destructive_hint: Some(false),    // Not destructive
+                    idempotent_hint: Some(true),      // Same query = same result
+                    open_world_hint: Some(true),      // Interacts with external index service
+                }),
                 icons: None,
                 meta: None,
                 output_schema: None,
-                title: None,
+                title: Some("Code Search".to_string()),
             }
         } else {
             panic!("Schema creation failed");
