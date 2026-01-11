@@ -1,6 +1,6 @@
 [package]
 name = "sanshu"
-version = "0.26.4"
+version = "0.26.5"
 edition = "2021"
 default-run = "sanshu-ui"
 
