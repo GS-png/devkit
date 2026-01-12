@@ -46,6 +46,13 @@ struct HistoryEntryMeta {
 }
 
 fn preview_from_meta(meta: &HistoryEntryMeta) -> String {
+    if let Some(req) = meta.request.as_ref() {
+        let first = req.message.lines().next().unwrap_or("").trim();
+        if !first.is_empty() {
+            return first.to_string();
+        }
+    }
+
     if let Ok(r) = serde_json::from_value::<McpResponse>(meta.response.clone()) {
         if let Some(input) = r.user_input {
             let first = input.lines().next().unwrap_or("").trim();
@@ -55,10 +62,7 @@ fn preview_from_meta(meta: &HistoryEntryMeta) -> String {
         }
     }
 
-    meta.request
-        .as_ref()
-        .map(|r| r.message.lines().next().unwrap_or("").to_string())
-        .unwrap_or_default()
+    String::new()
 }
 
 pub fn history_base_dir() -> Result<PathBuf> {
