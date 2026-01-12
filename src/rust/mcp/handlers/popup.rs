@@ -15,6 +15,7 @@ pub fn create_tauri_popup(request: &PopupRequest) -> Result<String> {
     // Create temp request file - cross platform
     let temp_dir = std::env::temp_dir();
     let temp_file = temp_dir.join(format!("mcp_request_{}.json", request.id));
+    let ui_log_file = temp_dir.join(format!("sanshu_ui_mcp_{}.log", request.id));
     let request_json = serde_json::to_string_pretty(request)?;
     fs::write(&temp_file, request_json)?;
 
@@ -23,6 +24,7 @@ pub fn create_tauri_popup(request: &PopupRequest) -> Result<String> {
 
     // Execute UI command
     let output = Command::new(&command_path)
+        .env("MCP_LOG_FILE", ui_log_file.to_string_lossy().to_string())
         .arg("--mcp-request")
         .arg(temp_file.to_string_lossy().to_string())
         .output()
@@ -43,9 +45,10 @@ pub fn create_tauri_popup(request: &PopupRequest) -> Result<String> {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
         anyhow::bail!(
-            "UI process failed ({}). Exit: {}\n--- stderr ---\n{}\n--- stdout ---\n{}",
+            "UI process failed ({}). Exit: {}\nUI log file: {}\n--- stderr ---\n{}\n--- stdout ---\n{}",
             command_path,
             output.status,
+            ui_log_file.display(),
             stderr.trim(),
             stdout.trim()
         );

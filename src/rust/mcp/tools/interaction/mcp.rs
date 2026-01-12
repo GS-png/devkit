@@ -209,6 +209,7 @@ impl InteractionTool {
         let temp_dir = std::env::temp_dir();
         let request_file = temp_dir.join(format!("mcp_request_{}.json", task_id));
         let response_file = temp_dir.join(format!("mcp_response_{}.json", task_id));
+        let ui_log_file = temp_dir.join(format!("sanshu_ui_mcp_{}.log", task_id));
         
         // Write request
         let request_json = serde_json::to_string_pretty(&popup_request)
@@ -224,6 +225,14 @@ impl InteractionTool {
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let mut child = Command::new(&command_path)
+            .env(
+                "MCP_LOG_FILE",
+                ui_log_file.to_string_lossy().to_string(),
+            )
+            .env(
+                "RUST_LOG",
+                std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()),
+            )
             .arg("--mcp-request")
             .arg(request_file.to_string_lossy().to_string())
             .arg("--response-file")
@@ -352,6 +361,7 @@ impl InteractionTool {
         let temp_dir = std::env::temp_dir();
         let request_file = temp_dir.join(format!("mcp_request_{}.json", task_id));
         let response_file = temp_dir.join(format!("mcp_response_{}.json", task_id));
+        let ui_log_file = temp_dir.join(format!("sanshu_ui_mcp_{}.log", task_id));
 
         let request_json = serde_json::to_string_pretty(&popup_request)
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
@@ -364,6 +374,14 @@ impl InteractionTool {
             .map_err(|e| McpError::internal_error(e.to_string(), None))?;
 
         let mut child = Command::new(&command_path)
+            .env(
+                "MCP_LOG_FILE",
+                ui_log_file.to_string_lossy().to_string(),
+            )
+            .env(
+                "RUST_LOG",
+                std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string()),
+            )
             .arg("--mcp-request")
             .arg(request_file.to_string_lossy().to_string())
             .arg("--response-file")
