@@ -44,6 +44,18 @@ pub fn create_tauri_popup(request: &PopupRequest) -> Result<String> {
     }
 }
 
+fn ui_candidate_names() -> &'static [&'static str] {
+    #[cfg(windows)]
+    {
+        &["sanshu-ui.exe", "sanshu-ui"]
+    }
+
+    #[cfg(not(windows))]
+    {
+        &["sanshu-ui"]
+    }
+}
+
 /// Find UI command path
 ///
 /// Priority: same directory -> global -> development
@@ -70,12 +82,14 @@ pub fn find_ui_command() -> Result<String> {
     }
     let prefer_debug = explicit_debug || dev_listening;
     if prefer_debug {
-        let repo_debug_ui_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        let repo_debug_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("target")
-            .join("debug")
-            .join("sanshu-ui");
-        if repo_debug_ui_path.exists() && is_executable(&repo_debug_ui_path) {
-            return Ok(repo_debug_ui_path.to_string_lossy().to_string());
+            .join("debug");
+        for name in ui_candidate_names() {
+            let p = repo_debug_dir.join(name);
+            if p.exists() && is_executable(&p) {
+                return Ok(p.to_string_lossy().to_string());
+            }
         }
 
         if let Ok(current_exe) = std::env::current_exe() {
@@ -83,20 +97,25 @@ pub fn find_ui_command() -> Result<String> {
                 .ancestors()
                 .find(|p| p.file_name().and_then(|s| s.to_str()) == Some("target"))
             {
-                let debug_ui_path = target_dir.join("debug").join("sanshu-ui");
-                if debug_ui_path.exists() && is_executable(&debug_ui_path) {
-                    return Ok(debug_ui_path.to_string_lossy().to_string());
+                let debug_dir = target_dir.join("debug");
+                for name in ui_candidate_names() {
+                    let p = debug_dir.join(name);
+                    if p.exists() && is_executable(&p) {
+                        return Ok(p.to_string_lossy().to_string());
+                    }
                 }
             }
         }
     }
 
-    let repo_release_ui_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+    let repo_release_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("target")
-        .join("release")
-        .join("sanshu-ui");
-    if repo_release_ui_path.exists() && is_executable(&repo_release_ui_path) {
-        return Ok(repo_release_ui_path.to_string_lossy().to_string());
+        .join("release");
+    for name in ui_candidate_names() {
+        let p = repo_release_dir.join(name);
+        if p.exists() && is_executable(&p) {
+            return Ok(p.to_string_lossy().to_string());
+        }
     }
 
     // 1. Try UI command in same directory as MCP server
@@ -106,22 +125,29 @@ pub fn find_ui_command() -> Result<String> {
                 .ancestors()
                 .find(|p| p.file_name().and_then(|s| s.to_str()) == Some("target"))
             {
-                let release_ui_path = target_dir.join("release").join("sanshu-ui");
-                if release_ui_path.exists() && is_executable(&release_ui_path) {
-                    return Ok(release_ui_path.to_string_lossy().to_string());
+                let release_dir = target_dir.join("release");
+                for name in ui_candidate_names() {
+                    let p = release_dir.join(name);
+                    if p.exists() && is_executable(&p) {
+                        return Ok(p.to_string_lossy().to_string());
+                    }
                 }
             }
-            // Try new name first
-            let local_ui_path = exe_dir.join("sanshu-ui");
-            if local_ui_path.exists() && is_executable(&local_ui_path) {
-                return Ok(local_ui_path.to_string_lossy().to_string());
+            for name in ui_candidate_names() {
+                let p = exe_dir.join(name);
+                if p.exists() && is_executable(&p) {
+                    return Ok(p.to_string_lossy().to_string());
+                }
             }
         }
     }
 
     // 2. Try global command
-    if test_command_available("sanshu-ui") {
-        return Ok("sanshu-ui".to_string());
+    for name in ui_candidate_names() {
+        let candidate = name.trim_end_matches(".exe");
+        if test_command_available(candidate) {
+            return Ok(candidate.to_string());
+        }
     }
 
     // 3. Return detailed error
