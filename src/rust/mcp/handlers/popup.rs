@@ -206,7 +206,7 @@ fn ensure_vite_dev_server_running() -> Result<()> {
         anyhow::bail!("pnpm not found in PATH. Please install pnpm or switch to release UI.");
     }
 
-    let log_path = std::path::Path::new("/tmp").join("sanshu_pnpm_dev.log");
+    let log_path = std::env::temp_dir().join("sanshu_pnpm_dev.log");
     let log_file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)

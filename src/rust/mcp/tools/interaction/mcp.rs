@@ -97,10 +97,39 @@ fn is_ui_process_running(pid: u32) -> bool {
     {
         std::path::Path::new(&format!("/proc/{}", pid)).exists()
     }
-    #[cfg(not(target_os = "linux"))]
+
+    #[cfg(windows)]
     {
-        let _ = pid;
-        true
+        let filter = format!("PID eq {}", pid);
+        std::process::Command::new("tasklist")
+            .args(["/FI", &filter, "/FO", "CSV", "/NH"])
+            .output()
+            .ok()
+            .and_then(|o| {
+                if !o.status.success() {
+                    return None;
+                }
+                let out = String::from_utf8_lossy(&o.stdout);
+                let lower = out.to_ascii_lowercase();
+                let looks_like_no_tasks = lower.contains("no tasks")
+                    || lower.contains("info")
+                    || out.contains("信息")
+                    || out.contains("没有")
+                    || out.contains("无")
+                    || out.contains("未")
+                    || out.contains("找不到");
+                Some(!looks_like_no_tasks && out.contains(&pid.to_string()))
+            })
+            .unwrap_or(false)
+    }
+
+    #[cfg(all(not(target_os = "linux"), not(windows)))]
+    {
+        std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
     }
 }
 
@@ -480,6 +509,11 @@ impl InteractionTool {
                 let step_ms: u64 = 200;
 
                 let start = Instant::now();
+
+                #[cfg(windows)]
+                let mut last_pid_check = Instant::now()
+                    .checked_sub(Duration::from_millis(2_000))
+                    .unwrap_or_else(Instant::now);
                 loop {
                     if let Ok(content) = fs::read_to_string(&task.response_file) {
                         if !content.trim().is_empty() {
@@ -499,26 +533,43 @@ impl InteractionTool {
                         }
                     }
 
-                    if let Some(pid) = task.ui_pid {
-                        if !is_ui_process_running(pid) {
-                            cleanup_task_files(&task_id, &task);
-                            {
-                                let mut tasks = PENDING_TASKS.lock().unwrap();
-                                tasks.remove(&task_id);
+                    let ui_exited = if let Some(pid) = task.ui_pid {
+                        #[cfg(windows)]
+                        {
+                            if last_pid_check.elapsed() >= Duration::from_millis(1_000) {
+                                last_pid_check = Instant::now();
+                                !is_ui_process_running(pid)
+                            } else {
+                                false
                             }
-                            return Ok(CallToolResult::success(vec![Content::text(
-                                "Operation cancelled by user".to_string(),
-                            )]));
+                        }
+                        #[cfg(not(windows))]
+                        {
+                            !is_ui_process_running(pid)
                         }
                     } else {
+                        true
+                    };
+
+                    if ui_exited {
                         cleanup_task_files(&task_id, &task);
                         {
                             let mut tasks = PENDING_TASKS.lock().unwrap();
                             tasks.remove(&task_id);
                         }
-                        return Ok(CallToolResult::success(vec![Content::text(
-                            "Operation cancelled by user".to_string(),
-                        )]));
+                        let ui_log_file = std::env::temp_dir()
+                            .join(format!("sanshu_ui_mcp_{}.log", task_id));
+                        let mcp_log_file = std::env::temp_dir().join("sanshu_mcp.log");
+                        return Ok(CallToolResult::success(vec![Content::text(format!(
+                            "UI did not return a response (it may have failed to start or exited early).\n\
+                            Task ID: {}\n\
+                            UI log: {}\n\
+                            MCP log: {}\n\
+                            Please open these log files and send their contents.",
+                            task_id,
+                            ui_log_file.display(),
+                            mcp_log_file.display(),
+                        ))]));
                     }
 
                     if let Some(max_wait_ms) = max_wait_ms {
