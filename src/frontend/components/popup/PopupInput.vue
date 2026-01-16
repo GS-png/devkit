@@ -290,7 +290,7 @@ async function handleIngredientPaste(event: ClipboardEvent) {
           const dishType = detectedType || blob.type || 'image/png'
           const spiceId = await invoke('stash_ingredient_base64_cmd', {
             base64: dataUrl,
-            dish_type: dishType,
+            dishType,
             tag: `pasted-${Date.now()}.${guessFileExtensionFromMime(dishType)}`,
           }) as unknown as string
 
@@ -482,7 +482,7 @@ async function handleIngredientFiles(files: FileList | File[]): Promise<void> {
         const dataUrl = await fileToDataUrl(file)
         const spiceId = await invoke('stash_ingredient_base64_cmd', {
           base64: dataUrl,
-          dish_type: file.type || 'image/png',
+          dishType: file.type || 'image/png',
           tag: file.name,
         }) as unknown as string
 
