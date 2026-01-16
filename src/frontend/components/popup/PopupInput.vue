@@ -492,8 +492,18 @@ async function handleIngredientFiles(files: FileList | File[]): Promise<void> {
       }
       catch (error) {
         console.error('食材处理失败:', error)
-        message.error(`食材 ${file.name} 处理失败`)
-        throw error
+        const errMsg = (() => {
+          const e: any = error
+          if (e && typeof e.message === 'string' && e.message.length > 0)
+            return e.message
+          try {
+            return typeof e === 'string' ? e : JSON.stringify(e)
+          }
+          catch {
+            return `${e}`
+          }
+        })()
+        message.error(`食材 ${file.name} 处理失败: ${errMsg}`)
       }
     }
     else {

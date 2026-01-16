@@ -13,13 +13,13 @@ pub struct PantryLabel {
 }
 
 pub fn pantry_base_dir() -> Result<PathBuf> {
-    let base = dirs::cache_dir()
+    let root = dirs::cache_dir()
         .or_else(dirs::data_dir)
         .or_else(dirs::config_dir)
-        .ok_or_else(|| anyhow::anyhow!("无法获取缓存目录"))?
-        .join("bistro")
-        .join("pantry");
-    fs::create_dir_all(&base)?;
+        .unwrap_or_else(std::env::temp_dir);
+    let base = root.join("bistro").join("pantry");
+    fs::create_dir_all(&base)
+        .map_err(|e| anyhow::anyhow!("无法创建缓存目录 {}: {}", base.display(), e))?;
     Ok(base)
 }
 
