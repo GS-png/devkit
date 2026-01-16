@@ -19,6 +19,8 @@ use std::path::PathBuf;
 use std::process::Command;
 #[cfg(target_os = "linux")]
 use std::io::ErrorKind;
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+use std::process::Command;
 
 #[tauri::command]
 pub async fn get_app_info() -> Result<String, String> {
@@ -744,6 +746,18 @@ fn read_clipboard_ingredients_impl() -> Result<Vec<ClipboardIngredientBytes>, St
             if let Some(items) = try_read_ingredients_from_clipboard_text(&mut clipboard) {
                 return Ok(items);
             }
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(items) = try_read_windows_clipboard_ingredient_files() {
+                    return Ok(items);
+                }
+            }
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(items) = try_read_macos_clipboard_ingredient_files() {
+                    return Ok(items);
+                }
+            }
             #[cfg(target_os = "linux")]
             {
                 if let Some(items) = try_read_linux_clipboard_ingredient() {
@@ -756,6 +770,20 @@ fn read_clipboard_ingredients_impl() -> Result<Vec<ClipboardIngredientBytes>, St
 
     if let Some(items) = try_read_ingredients_from_clipboard_text(&mut clipboard) {
         return Ok(items);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(items) = try_read_windows_clipboard_ingredient_files() {
+            return Ok(items);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(items) = try_read_macos_clipboard_ingredient_files() {
+            return Ok(items);
+        }
     }
 
     #[cfg(target_os = "linux")]
@@ -885,6 +913,68 @@ fn try_load_ingredient_file_as_clipboard_item(path: &PathBuf) -> Option<Clipboar
         tag: None,
         bytes,
     })
+}
+
+#[cfg(target_os = "windows")]
+fn try_read_windows_clipboard_ingredient_files() -> Option<Vec<ClipboardIngredientBytes>> {
+    let script = "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Get-Clipboard -Format FileDropList -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName }";
+    let output = Command::new("powershell")
+        .args(["-NoProfile", "-Sta", "-Command", script])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(output.stdout).ok()?;
+    let mut out = Vec::new();
+    for line in text.lines().map(|l| l.trim()).filter(|l| !l.is_empty()) {
+        let p = PathBuf::from(line);
+        if let Some(item) = try_load_ingredient_file_as_clipboard_item(&p) {
+            out.push(item);
+        }
+    }
+    if out.is_empty() { None } else { Some(out) }
+}
+
+#[cfg(target_os = "macos")]
+fn try_read_macos_clipboard_ingredient_files() -> Option<Vec<ClipboardIngredientBytes>> {
+    let output = Command::new("osascript")
+        .args([
+            "-e",
+            "set out to \"\"",
+            "-e",
+            "try",
+            "-e",
+            "set theFiles to the clipboard as alias list",
+            "-e",
+            "on error",
+            "-e",
+            "set theFiles to {the clipboard as alias}",
+            "-e",
+            "end try",
+            "-e",
+            "repeat with f in theFiles",
+            "-e",
+            "set out to out & (POSIX path of f) & linefeed",
+            "-e",
+            "end repeat",
+            "-e",
+            "return out",
+        ])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let text = String::from_utf8(output.stdout).ok()?;
+    let mut out = Vec::new();
+    for line in text.lines().map(|l| l.trim()).filter(|l| !l.is_empty()) {
+        let p = PathBuf::from(line);
+        if let Some(item) = try_load_ingredient_file_as_clipboard_item(&p) {
+            out.push(item);
+        }
+    }
+    if out.is_empty() { None } else { Some(out) }
 }
 
 fn guess_ingredient_mime_from_path(path: &PathBuf) -> Option<&'static str> {
