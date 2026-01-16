@@ -286,10 +286,10 @@ async function handleIngredientPaste(event: ClipboardEvent) {
       for (const dataUrl of dataUrls) {
         try {
           const blob = await (await fetch(dataUrl)).blob()
-          const dishType = blob.type || 'image/png'
-          const bytes = new Uint8Array(await blob.arrayBuffer())
-          const spiceId = await invoke('stash_ingredient_bytes_cmd', {
-            bytes: Array.from(bytes),
+          const detectedType = dataUrl.match(/^data:([^;,]+)[;,]/i)?.[1]
+          const dishType = detectedType || blob.type || 'image/png'
+          const spiceId = await invoke('stash_ingredient_base64_cmd', {
+            base64: dataUrl,
             dish_type: dishType,
             tag: `pasted-${Date.now()}.${guessFileExtensionFromMime(dishType)}`,
           }) as unknown as string
@@ -465,15 +465,24 @@ async function handleIngredientFiles(files: FileList | File[]): Promise<void> {
   console.log('=== 处理食材文件 ===')
   console.log('文件数量:', files.length)
 
+  const fileToDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onerror = () => reject(reader.error || new Error('读取文件失败'))
+      reader.onload = () => resolve(String(reader.result || ''))
+      reader.readAsDataURL(file)
+    })
+  }
+
   for (const file of files) {
     console.log('处理文件:', file.name, '类型:', file.type, '大小:', file.size)
 
     if (file.type.startsWith('image/')) {
       try {
-        const bytes = new Uint8Array(await file.arrayBuffer())
-        const spiceId = await invoke('stash_ingredient_bytes_cmd', {
-          bytes: Array.from(bytes),
-          dish_type: file.type,
+        const dataUrl = await fileToDataUrl(file)
+        const spiceId = await invoke('stash_ingredient_base64_cmd', {
+          base64: dataUrl,
+          dish_type: file.type || 'image/png',
           tag: file.name,
         }) as unknown as string
 

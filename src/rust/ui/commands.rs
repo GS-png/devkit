@@ -690,6 +690,29 @@ pub async fn stash_ingredient_bytes_cmd(
 }
 
 #[tauri::command]
+pub async fn stash_ingredient_base64_cmd(
+    base64: String,
+    dish_type: String,
+    tag: Option<String>,
+) -> Result<String, String> {
+    let raw = base64.trim();
+    let b64 = if let Some(idx) = raw.find("base64,") {
+        &raw[(idx + "base64,".len())..]
+    } else {
+        raw
+    };
+
+    let decoded = general_purpose::STANDARD
+        .decode(b64)
+        .map_err(|e| format!("解码 base64 失败: {}", e))?;
+
+    let (normalized_bytes, normalized_dish_type) =
+        normalize_ingredient_bytes(&decoded, dish_type.as_str())?;
+    stash_ingredient_bytes(&normalized_bytes, normalized_dish_type.as_str(), tag)
+        .map_err(|e| format!("保存食材失败: {}", e))
+}
+
+#[tauri::command]
 pub async fn discard_spice_cmd(spice_id: String) -> Result<(), String> {
     discard_spice(&spice_id)
         .map_err(|e| format!("删除食材失败: {}", e))

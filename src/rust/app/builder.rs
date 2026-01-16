@@ -77,6 +77,7 @@ pub fn build_tauri_app() -> Builder<tauri::Wry> {
             get_cli_args,
             read_mcp_request,
             stash_ingredient_bytes_cmd,
+            stash_ingredient_base64_cmd,
             discard_spice_cmd,
             read_clipboard_ingredients_cached,
             build_mcp_continue_response,
